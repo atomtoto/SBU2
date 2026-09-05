@@ -1,16 +1,22 @@
 name: CI
 
 on:
-  # Branch pushes are covered by the pull_request trigger; keeping both here
-  # would run the same commit twice, which is billed at 10x on a private repo.
   push:
     branches:
       - main
+      - "claude/**"
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A push to a branch with an open pull request matches both triggers. Rather than
+# dropping one — which left branch pushes untested once the pull request merged —
+# the duplicate is cancelled, so each commit costs one macOS job either way.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
