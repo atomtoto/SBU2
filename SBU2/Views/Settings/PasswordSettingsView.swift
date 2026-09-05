@@ -74,7 +74,7 @@ struct PasswordSettingsView: View {
                     Label(message, systemImage: "xmark.circle.fill")
                         .foregroundStyle(.red)
                 }
-            case .none:
+            case .idle:
                 EmptyView()
             }
         }
