@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # Branch pushes are covered by the pull_request trigger; keeping both here
+  # would run the same commit twice, which is billed at 10x on a private repo.
   push:
     branches:
       - main
-      - "claude/**"
   pull_request:
   workflow_dispatch:
 

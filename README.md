@@ -42,9 +42,9 @@ xcodebuild test -scheme SBU2 -destination 'platform=iOS Simulator,name=iPhone 16
 ```
 
 Le workflow `.github/workflows/ci.yml` fait la même chose sur un runner macOS
-à chaque poussée sur `main` ou sur une branche `claude/**`. Le dépôt étant
-privé, ces minutes sont facturées ×10 : ajoutez `[skip ci]` au message de
-commit pour les changements qui ne touchent pas au code.
+à chaque pull request et à chaque poussée sur `main`. Le dépôt étant privé,
+ces minutes sont facturées ×10 : ajoutez `[skip ci]` au message de commit pour
+les changements qui ne touchent pas au code.
 
 ## Organisation du code
 
