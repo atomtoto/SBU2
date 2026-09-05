@@ -36,6 +36,12 @@ enum JBD {
         case factoryModeClose = 0x01
         /// Charge/discharge MOSFET control.
         case mosControl = 0xE1
+        /// Unlocks a password-protected BMS for the rest of the session.
+        case enterPassword = 0x06
+        /// Sets or replaces the hardware password.
+        case setPassword = 0x07
+        /// Clears the hardware password.
+        case clearPassword = 0x09
     }
 
     // MARK: - Requests
@@ -79,6 +85,45 @@ enum JBD {
         if !charge { code |= 0b01 }
         if !discharge { code |= 0b10 }
         return writeRequest(.mosControl, payload: [0x00, code])
+    }
+
+    // MARK: - Hardware password
+
+    /// The BMS wants each digit as its numeric value, not its ASCII code.
+    private static func digits(_ password: String) -> [UInt8]? {
+        guard password.count == 6 else { return nil }
+        let values = password.compactMap { $0.wholeNumberValue }
+        guard values.count == 6, values.allSatisfy({ (0...9).contains($0) }) else { return nil }
+        return values.map(UInt8.init)
+    }
+
+    static func isValidPassword(_ password: String) -> Bool {
+        digits(password) != nil
+    }
+
+    /// Unlocks the BMS. Must be sent before opening factory mode on a protected pack.
+    static func enterPassword(_ password: String) -> [UInt8]? {
+        guard let digits = digits(password) else { return nil }
+        return writeRequest(.enterPassword, payload: [0x06] + digits)
+    }
+
+    /// Replaces a known password with a new one.
+    static func changePassword(from current: String, to new: String) -> [UInt8]? {
+        guard let current = digits(current), let new = digits(new) else { return nil }
+        return writeRequest(.setPassword, payload: [0x0C] + current + new)
+    }
+
+    /// Sets a password on a pack that has none. The six leading bytes are the constant
+    /// the firmware expects in place of a current password.
+    static func createPassword(_ new: String) -> [UInt8]? {
+        guard let new = digits(new) else { return nil }
+        return writeRequest(.setPassword, payload: [0x0C, 0xD0, 0xD0, 0xD0, 0xD0, 0xCF, 0xCF] + new)
+    }
+
+    /// Clears the password. The payload is a fixed unlock sequence, sent after a
+    /// successful `enterPassword`.
+    static var clearPassword: [UInt8] {
+        writeRequest(.clearPassword, payload: [0x06, 0x4A, 0x31, 0x42, 0x32, 0x44, 0x34])
     }
 
     // MARK: - Responses

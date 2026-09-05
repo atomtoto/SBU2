@@ -54,6 +54,77 @@ struct RequestTests {
     }
 }
 
+@Suite("Mot de passe matériel")
+struct PasswordTests {
+
+    @Test("Saisie du mot de passe : chaque chiffre est envoyé en valeur numérique")
+    func enterPassword() {
+        #expect(JBD.enterPassword("333333")
+                == [0xDD, 0x5A, 0x06, 0x07, 0x06, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xDB, 0x77])
+    }
+
+    @Test("Changement de mot de passe")
+    func changePassword() {
+        #expect(JBD.changePassword(from: "555555", to: "666666")
+                == [0xDD, 0x5A, 0x07, 0x0D, 0x0C,
+                    0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
+                    0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
+                    0xFF, 0x9E, 0x77])
+    }
+
+    @Test("Création d'un mot de passe sur un pack qui n'en a pas")
+    func createPassword() {
+        #expect(JBD.createPassword("444444")
+                == [0xDD, 0x5A, 0x07, 0x0D, 0x0C,
+                    0xD0, 0xD0, 0xD0, 0xD0, 0xCF, 0xCF,
+                    0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+                    0xFA, 0xEA, 0x77])
+    }
+
+    @Test("Suppression du mot de passe")
+    func clearPassword() {
+        #expect(JBD.clearPassword
+                == [0xDD, 0x5A, 0x09, 0x07, 0x06, 0x4A, 0x31, 0x42, 0x32, 0x44, 0x34, 0xFE, 0x83, 0x77])
+    }
+
+    @Test("Chaque chiffre devient sa valeur numérique, pas son code ASCII")
+    func digitsAreNumericValues() throws {
+        let frame = try #require(JBD.enterPassword("102938"))
+        #expect(Array(frame[4...10]) == [0x06, 1, 0, 2, 9, 3, 8])
+    }
+
+    @Test("Un mot de passe mal formé est refusé avant l'envoi",
+          arguments: ["12345", "1234567", "12345a", "", "  1234"])
+    func rejectsMalformed(_ password: String) {
+        #expect(!JBD.isValidPassword(password))
+        #expect(JBD.enterPassword(password) == nil)
+    }
+}
+
+@Suite("Résumé des cellules")
+struct CellSummaryTests {
+
+    @Test("Extrêmes et écart")
+    func extremes() throws {
+        let summary = try #require(CellSummary(voltages: [3.320, 3.315, 3.318, 3.322]))
+        #expect(summary.lowestIndex == 1)
+        #expect(summary.highestIndex == 3)
+        #expect(abs(summary.deltaMillivolts - 7) < 0.001)
+    }
+
+    @Test("Les cellules absentes sont ignorées")
+    func ignoresUnpopulatedCells() throws {
+        let summary = try #require(CellSummary(voltages: [3.320, 3.310, 0, 0]))
+        #expect(summary.lowestIndex == 1)
+        #expect(summary.highestIndex == 0)
+    }
+
+    @Test("Aucun résumé quand aucune cellule n'est active")
+    func noLiveCells() {
+        #expect(CellSummary(voltages: [0, 0]) == nil)
+    }
+}
+
 @Suite("Décodage des réponses")
 struct ResponseTests {
 

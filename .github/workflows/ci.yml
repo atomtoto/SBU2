@@ -1,16 +1,24 @@
 name: CI
 
+# Only pushes. Adding pull_request on top ran every commit twice: the two events
+# produce different concurrency keys (`claude/x` vs `refs/heads/claude/x`), so they
+# never cancelled each other. GitHub attaches a push run to any pull request whose
+# head it is, so pull requests still get their check from this trigger, and commits
+# pushed without an open pull request stay covered.
 on:
-  # Branch pushes are covered by the pull_request trigger; keeping both here
-  # would run the same commit twice, which is billed at 10x on a private repo.
   push:
     branches:
       - main
-  pull_request:
+      - "claude/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Supersede an earlier run when new commits land on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
