@@ -59,13 +59,13 @@ struct PasswordTests {
 
     @Test("Saisie du mot de passe : chaque chiffre est envoyé en valeur numérique")
     func enterPassword() {
-        #expect(JBD.enterPassword("030303")
+        #expect(JBD.enterPassword("333333")
                 == [0xDD, 0x5A, 0x06, 0x07, 0x06, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xDB, 0x77])
     }
 
     @Test("Changement de mot de passe")
     func changePassword() {
-        #expect(JBD.changePassword(from: "050505", to: "060606")
+        #expect(JBD.changePassword(from: "555555", to: "666666")
                 == [0xDD, 0x5A, 0x07, 0x0D, 0x0C,
                     0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
                     0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
@@ -74,7 +74,7 @@ struct PasswordTests {
 
     @Test("Création d'un mot de passe sur un pack qui n'en a pas")
     func createPassword() {
-        #expect(JBD.createPassword("040404")
+        #expect(JBD.createPassword("444444")
                 == [0xDD, 0x5A, 0x07, 0x0D, 0x0C,
                     0xD0, 0xD0, 0xD0, 0xD0, 0xCF, 0xCF,
                     0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
@@ -85,6 +85,12 @@ struct PasswordTests {
     func clearPassword() {
         #expect(JBD.clearPassword
                 == [0xDD, 0x5A, 0x09, 0x07, 0x06, 0x4A, 0x31, 0x42, 0x32, 0x44, 0x34, 0xFE, 0x83, 0x77])
+    }
+
+    @Test("Chaque chiffre devient sa valeur numérique, pas son code ASCII")
+    func digitsAreNumericValues() throws {
+        let frame = try #require(JBD.enterPassword("102938"))
+        #expect(Array(frame[4...10]) == [0x06, 1, 0, 2, 9, 3, 8])
     }
 
     @Test("Un mot de passe mal formé est refusé avant l'envoi",
