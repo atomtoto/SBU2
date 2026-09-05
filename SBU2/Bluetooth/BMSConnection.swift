@@ -7,27 +7,23 @@ import CoreBluetooth
 import Foundation
 import Observation
 
-/// A JBD dongle seen while scanning.
+/// A BMS the app can open: a dongle seen while scanning, or the built-in demo pack.
 struct DiscoveredBMS: Identifiable, Hashable {
-    let id: UUID
+    let id: String
     var name: String
-    var rssi: Int
+    var rssi: Int?
+    var isDemo: Bool
 
-    fileprivate var peripheral: CBPeripheral
+    fileprivate var peripheral: CBPeripheral?
 
-    static func == (lhs: DiscoveredBMS, rhs: DiscoveredBMS) -> Bool {
-        lhs.id == rhs.id
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
+    static func == (lhs: DiscoveredBMS, rhs: DiscoveredBMS) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// Scans for JBD dongles, keeps one connected and polls it for live values.
+/// Scans for JBD dongles, keeps one open and polls it for live values.
 ///
-/// The central manager is created on the main queue, so every delegate callback
-/// already runs where the observable state is read from.
+/// The central manager runs on the main queue, so every delegate callback already
+/// happens where the observable state is read from.
 @Observable
 final class BMSConnection: NSObject {
 
@@ -46,13 +42,19 @@ final class BMSConnection: NSObject {
         }
     }
 
-    // The dongle exposes one serial-like service: FF01 notifies, FF02 accepts writes.
+    /// What the BMS said about the last write.
+    enum WriteOutcome: Equatable {
+        case idle
+        case succeeded
+        case rejected(String)
+    }
+
     private static let serviceUUID = CBUUID(string: "FF00")
     private static let notifyUUID = CBUUID(string: "FF01")
     private static let writeUUID = CBUUID(string: "FF02")
-
-    /// How often a full basic-info + cell-voltage pair is requested.
     private static let pollInterval: TimeInterval = 1.0
+
+    // MARK: Observable state
 
     private(set) var status: Status = .idle
     private(set) var discovered: [DiscoveredBMS] = []
@@ -60,47 +62,109 @@ final class BMSConnection: NSObject {
     private(set) var cellVoltages: [Double] = []
     private(set) var lastUpdate: Date?
     private(set) var lastError: String?
-
-    /// Set while a MOSFET write is in flight, so the UI can disable the switches.
     private(set) var isWritingMOS = false
+    private(set) var passwordOutcome: WriteOutcome = .idle
+
+    /// Settings of the device currently open. Call `saveSettings()` after changing it —
+    /// the `@Observable` macro rewrites stored properties, so `didSet` is not a reliable
+    /// place to persist from. The device tabs do that on every change.
+    var settings = DeviceSettings()
+
+    private(set) var openDeviceID: String?
+
+    func saveSettings() {
+        guard let openDeviceID else { return }
+        DeviceSettingsStore.save(settings, for: openDeviceID)
+    }
+
+    var cellSummary: CellSummary? { CellSummary(voltages: cellVoltages) }
+
+    // MARK: Internals
 
     @ObservationIgnored private var central: CBCentralManager!
     @ObservationIgnored private var peripheral: CBPeripheral?
     @ObservationIgnored private var writeCharacteristic: CBCharacteristic?
     @ObservationIgnored private var assembler = FrameAssembler()
     @ObservationIgnored private var pollTimer: Timer?
-    /// Cleared when the user leaves the monitor, so `didDisconnect` does not reconnect.
     @ObservationIgnored private var wantsConnection = false
+    @ObservationIgnored private var demo: DemoDevice?
+    @ObservationIgnored private var showDemoDevice = true
 
     override init() {
         super.init()
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
-    // MARK: - Scanning & connection
+    // MARK: - Discovery
+
+    func setShowDemoDevice(_ show: Bool) {
+        guard show != showDemoDevice else { return }
+        showDemoDevice = show
+        refreshDemoEntry()
+    }
+
+    private func refreshDemoEntry() {
+        discovered.removeAll { $0.isDemo }
+        if showDemoDevice {
+            var entry = DiscoveredBMS(id: DemoDevice.identifier,
+                                      name: "Appareil de démonstration",
+                                      rssi: nil,
+                                      isDemo: true,
+                                      peripheral: nil)
+            entry.name = DeviceSettingsStore.load(DemoDevice.identifier).name.isEmpty
+                ? entry.name
+                : DeviceSettingsStore.load(DemoDevice.identifier).name
+            discovered.insert(entry, at: 0)
+        }
+    }
 
     func startScanning() {
+        discovered.removeAll { !$0.isDemo }
+        refreshDemoEntry()
         guard central.state == .poweredOn else { return }
-        discovered.removeAll()
         status = .scanning
         central.scanForPeripherals(withServices: [Self.serviceUUID])
     }
 
-    func connect(to device: DiscoveredBMS) {
-        central.stopScan()
-        wantsConnection = true
-        lastError = nil
-        peripheral = device.peripheral
-        peripheral?.delegate = self
-        status = .connecting(device.name)
-        central.connect(device.peripheral)
+    /// The device to open automatically, if the user asked for one.
+    var autoConnectTarget: DiscoveredBMS? {
+        discovered.first { DeviceSettingsStore.load($0.id).autoConnect }
     }
 
-    func disconnect() {
+    // MARK: - Opening a device
+
+    func open(_ device: DiscoveredBMS) {
+        central.stopScan()
+        lastError = nil
+        passwordOutcome = .idle
+        openDeviceID = device.id
+        settings = DeviceSettingsStore.load(device.id)
+
+        if device.isDemo {
+            demo = DemoDevice()
+            peripheral = nil
+            wantsConnection = false
+            status = .connected(displayName(for: device))
+            startPolling()
+            return
+        }
+
+        demo = nil
+        wantsConnection = true
+        peripheral = device.peripheral
+        peripheral?.delegate = self
+        status = .connecting(displayName(for: device))
+        if let peripheral = device.peripheral {
+            central.connect(peripheral)
+        }
+    }
+
+    func close() {
         wantsConnection = false
         stopPolling()
+        demo = nil
+        openDeviceID = nil
         if let peripheral {
-            // Scanning resumes from `didDisconnectPeripheral`, once the link is really down.
             central.cancelPeripheralConnection(peripheral)
         } else {
             startScanning()
@@ -108,15 +172,9 @@ final class BMSConnection: NSObject {
         resetReadings()
     }
 
-    /// Gives up on the current peripheral: no reconnection attempt, back to scanning.
-    private func abortConnection(_ message: String) {
-        lastError = message
-        wantsConnection = false
-        if let peripheral {
-            central.cancelPeripheralConnection(peripheral)
-        } else {
-            startScanning()
-        }
+    func displayName(for device: DiscoveredBMS) -> String {
+        let stored = DeviceSettingsStore.load(device.id).name
+        return stored.isEmpty ? device.name : stored
     }
 
     private func resetReadings() {
@@ -126,6 +184,16 @@ final class BMSConnection: NSObject {
         lastUpdate = nil
         isWritingMOS = false
         writeCharacteristic = nil
+    }
+
+    private func abortConnection(_ message: String) {
+        lastError = message
+        wantsConnection = false
+        if let peripheral {
+            central.cancelPeripheralConnection(peripheral)
+        } else {
+            startScanning()
+        }
     }
 
     // MARK: - Polling
@@ -144,6 +212,13 @@ final class BMSConnection: NSObject {
     }
 
     private func poll() {
+        if demo != nil {
+            demo?.step()
+            info = demo?.info ?? BasicInfo()
+            cellVoltages = demo?.cellVoltages ?? []
+            lastUpdate = .now
+            return
+        }
         send(JBD.readRequest(.basicInfo))
         send(JBD.readRequest(.cellVoltages))
     }
@@ -153,50 +228,124 @@ final class BMSConnection: NSObject {
         peripheral.writeValue(Data(bytes), for: writeCharacteristic, type: .withoutResponse)
     }
 
-    // MARK: - MOSFET control
+    // MARK: - Writes
 
-    /// Toggles the charge/discharge MOSFETs. The BMS only accepts the write while
-    /// factory mode is open, so the three frames are always sent together.
+    /// Every write has to be bracketed: unlock if the pack is protected, open factory
+    /// mode, write, then close it again.
+    private func write(_ command: [UInt8]) {
+        if settings.hasPassword, let unlock = JBD.enterPassword(settings.password) {
+            send(unlock)
+        }
+        send(JBD.openFactoryMode)
+        send(command)
+        send(JBD.closeFactoryMode)
+    }
+
+    var canControlMOS: Bool {
+        status.isConnected && settings.liontronMode != .autoEnabled
+    }
+
     func setMOS(charge: Bool, discharge: Bool) {
         guard status.isConnected else { return }
         lastError = nil
-        isWritingMOS = true
-        send(JBD.openFactoryMode)
-        send(JBD.mosControl(charge: charge, discharge: discharge))
-        send(JBD.closeFactoryMode)
 
-        // The BMS answers the write, but the state we display comes from the next
-        // basic-info poll — release the UI once that has had time to land.
+        if demo != nil {
+            demo?.setMOS(charge: charge, discharge: discharge)
+            info = demo?.info ?? info
+            return
+        }
+
+        isWritingMOS = true
+        write(JBD.mosControl(charge: charge, discharge: discharge))
+        // The switches reflect what the BMS reports, so release the UI once the next
+        // poll has had time to land.
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.pollInterval * 2) { [weak self] in
             self?.isWritingMOS = false
         }
     }
 
+    // MARK: - Hardware password
+
+    func createPassword(_ new: String) {
+        guard let command = JBD.createPassword(new) else { return }
+        passwordOutcome = .idle
+        send(JBD.openFactoryMode)
+        send(command)
+        send(JBD.closeFactoryMode)
+        settings.password = new
+        settings.hasPassword = true
+        saveSettings()
+    }
+
+    func changePassword(to new: String) {
+        guard let command = JBD.changePassword(from: settings.password, to: new) else { return }
+        passwordOutcome = .idle
+        if let unlock = JBD.enterPassword(settings.password) { send(unlock) }
+        send(JBD.openFactoryMode)
+        send(command)
+        send(JBD.closeFactoryMode)
+        settings.password = new
+        saveSettings()
+    }
+
+    func removePassword() {
+        passwordOutcome = .idle
+        if let unlock = JBD.enterPassword(settings.password) { send(unlock) }
+        send(JBD.openFactoryMode)
+        send(JBD.clearPassword)
+        send(JBD.closeFactoryMode)
+        settings.hasPassword = false
+        settings.password = "000000"
+        saveSettings()
+    }
+
     // MARK: - Incoming frames
 
     private func handle(_ frame: [UInt8]) {
-        do {
-            let response = try JBD.decode(frame)
-            guard response.isOK else {
-                if response.register == JBD.Register.mosControl.rawValue {
-                    lastError = "Le BMS a refusé la commande MOSFET (mot de passe ?)."
-                }
-                return
-            }
-            switch response.register {
-            case JBD.Register.basicInfo.rawValue:
-                if let decoded = BasicInfo.decode(payload: response.payload) {
-                    info = decoded
-                    lastUpdate = .now
-                }
-            case JBD.Register.cellVoltages.rawValue:
-                cellVoltages = CellVoltages.decode(payload: response.payload)
+        guard let response = try? JBD.decode(frame) else { return }
+
+        guard response.isOK else {
+            handleError(register: response.register, status: response.status)
+            return
+        }
+
+        switch response.register {
+        case JBD.Register.basicInfo.rawValue:
+            if let decoded = BasicInfo.decode(payload: response.payload) {
+                info = decoded
                 lastUpdate = .now
-            default:
-                break
             }
-        } catch {
-            // A corrupt frame is not worth surfacing: the next poll is a second away.
+        case JBD.Register.cellVoltages.rawValue:
+            cellVoltages = CellVoltages.decode(payload: response.payload)
+            lastUpdate = .now
+        case JBD.Register.enterPassword.rawValue,
+             JBD.Register.setPassword.rawValue,
+             JBD.Register.clearPassword.rawValue:
+            passwordOutcome = .succeeded
+        default:
+            break
+        }
+    }
+
+    private func handleError(register: UInt8, status: UInt8) {
+        switch register {
+        case JBD.Register.enterPassword.rawValue,
+             JBD.Register.setPassword.rawValue,
+             JBD.Register.clearPassword.rawValue:
+            passwordOutcome = .rejected("Le BMS a refusé le mot de passe.")
+            settings.hasPassword = true
+            saveSettings()
+        case JBD.Register.mosControl.rawValue, JBD.Register.factoryModeOpen.rawValue:
+            // 0x80 on a factory-mode write is how a hardware-locked Liontron pack answers.
+            if status == 0x80, settings.liontronMode == .autoDisabled {
+                settings.liontronMode = .autoEnabled
+                saveSettings()
+            }
+            lastError = settings.hasPassword
+                ? "Le BMS a refusé la commande. Vérifiez le mot de passe."
+                : "Le BMS a refusé la commande. Ce pack est peut-être verrouillé."
+        default:
+            break
         }
     }
 }
@@ -212,7 +361,8 @@ extension BMSConnection: CBCentralManagerDelegate {
             startScanning()
         case .poweredOff:
             status = .bluetoothOff
-            resetReadings()
+            discovered.removeAll { !$0.isDemo }
+            refreshDemoEntry()
         case .unauthorized:
             status = .unauthorized
         case .unsupported:
@@ -226,12 +376,13 @@ extension BMSConnection: CBCentralManagerDelegate {
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any],
                         rssi RSSI: NSNumber) {
-        let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
+        let advertised = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
             ?? peripheral.name
             ?? "BMS inconnu"
-        let device = DiscoveredBMS(id: peripheral.identifier,
-                                   name: name,
+        let device = DiscoveredBMS(id: peripheral.identifier.uuidString,
+                                   name: advertised,
                                    rssi: RSSI.intValue,
+                                   isDemo: false,
                                    peripheral: peripheral)
 
         if let index = discovered.firstIndex(where: { $0.id == device.id }) {
