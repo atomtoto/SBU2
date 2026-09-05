@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  # Branch pushes are covered by the pull_request trigger; keeping both here
+  # would run the same commit twice, which is billed at 10x on a private repo.
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Pick an available iPhone simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          cat > /tmp/pick-simulator.py <<'PY'
+          import json, subprocess, sys
+
+          raw = subprocess.run(
+              ["xcrun", "simctl", "list", "devices", "available", "--json"],
+              capture_output=True, text=True, check=True).stdout
+          candidates = []
+          for runtime, devices in json.loads(raw)["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and "iPhone" in device["name"]:
+                      candidates.append((runtime, device["name"], device["udid"]))
+          if not candidates:
+              sys.exit("no available iPhone simulator")
+          runtime, name, udid = sorted(candidates)[-1]
+          sys.stderr.write("Using %s on %s\n" % (name, runtime))
+          print(udid)
+          PY
+          udid=$(python3 /tmp/pick-simulator.py)
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project SBU2.xcodeproj \
+            -scheme SBU2 \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          xcodebuild test-without-building \
+            -project SBU2.xcodeproj \
+            -scheme SBU2 \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
