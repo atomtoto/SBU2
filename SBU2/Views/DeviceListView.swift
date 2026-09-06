@@ -20,14 +20,14 @@ struct DeviceListView: View {
         NavigationStack {
             Group {
                 if let message = unavailableMessage {
-                    ContentUnavailableView("Bluetooth indisponible",
+                    ContentUnavailableView("Bluetooth unavailable",
                                            systemImage: "antenna.radiowaves.left.and.right.slash",
                                            description: Text(message))
                 } else if connection.discovered.isEmpty {
                     ContentUnavailableView {
-                        Label("Recherche en cours", systemImage: "dot.radiowaves.left.and.right")
+                        Label("Scanning", systemImage: "dot.radiowaves.left.and.right")
                     } description: {
-                        Text("Vérifiez que le module Bluetooth du BMS est alimenté et qu'aucune autre application n'y est connectée.")
+                        Text("Check that the BMS Bluetooth module is powered and that no other app is connected to it.")
                     }
                 } else {
                     ScrollView {
@@ -43,10 +43,10 @@ struct DeviceListView: View {
                     }
                 }
             }
-            .navigationTitle("Appareils")
+            .navigationTitle("Devices")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Réglages", systemImage: "gear") { showingSettings = true }
+                    Button("Settings", systemImage: "gear") { showingSettings = true }
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     if connection.status == .scanning {
@@ -89,11 +89,11 @@ struct DeviceListView: View {
     private var unavailableMessage: String? {
         switch connection.status {
         case .bluetoothOff:
-            return "Le Bluetooth est désactivé."
+            return "Bluetooth is turned off."
         case .unauthorized:
-            return "SBU2 n'est pas autorisée à utiliser le Bluetooth. Activez l'accès dans Réglages."
+            return "SBU2 is not allowed to use Bluetooth. Enable access in Settings."
         case .unsupported:
-            return "Cet appareil ne prend pas en charge le Bluetooth LE."
+            return "This device does not support Bluetooth LE."
         default:
             return nil
         }
@@ -122,13 +122,13 @@ private struct DeviceCard: View {
                     .font(.headline)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                Text(device.isDemo ? "Valeurs simulées" : device.id)
+                Text(device.isDemo ? "Simulated values" : device.id)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
-                Label("Ouvrir", systemImage: "chevron.right")
+                Label("Connect", systemImage: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .labelStyle(.titleOnly)
                     .foregroundStyle(Color.accentColor)
@@ -141,7 +141,7 @@ private struct DeviceCard: View {
         .modifier(CardSurfaceModifier())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(name)
-        .accessibilityHint("Ouvre cet appareil")
+        .accessibilityHint("Opens this device")
     }
 }
 

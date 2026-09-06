@@ -107,7 +107,7 @@ final class BMSConnection: NSObject {
         discovered.removeAll { $0.isDemo }
         if showDemoDevice {
             var entry = DiscoveredBMS(id: DemoDevice.identifier,
-                                      name: "Appareil de démonstration",
+                                      name: "Demo device",
                                       rssi: nil,
                                       isDemo: true,
                                       peripheral: nil)
@@ -332,7 +332,7 @@ final class BMSConnection: NSObject {
         case JBD.Register.enterPassword.rawValue,
              JBD.Register.setPassword.rawValue,
              JBD.Register.clearPassword.rawValue:
-            passwordOutcome = .rejected("Le BMS a refusé le mot de passe.")
+            passwordOutcome = .rejected("The BMS rejected the password.")
             settings.hasPassword = true
             saveSettings()
         case JBD.Register.mosControl.rawValue, JBD.Register.factoryModeOpen.rawValue:
@@ -342,8 +342,8 @@ final class BMSConnection: NSObject {
                 saveSettings()
             }
             lastError = settings.hasPassword
-                ? "Le BMS a refusé la commande. Vérifiez le mot de passe."
-                : "Le BMS a refusé la commande. Ce pack est peut-être verrouillé."
+                ? "The BMS rejected the command. Check the password."
+                : "The BMS rejected the command. This pack may be hardware locked."
         default:
             break
         }
@@ -402,7 +402,7 @@ extension BMSConnection: CBCentralManagerDelegate {
                         error: Error?) {
         wantsConnection = false
         self.peripheral = nil
-        lastError = error?.localizedDescription ?? "Connexion impossible."
+        lastError = error?.localizedDescription ?? "Could not connect."
         startScanning()
     }
 
@@ -428,7 +428,7 @@ extension BMSConnection: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
-            abortConnection("Service FF00 introuvable sur cet appareil.")
+            abortConnection("Service FF00 not found on this device.")
             return
         }
         peripheral.discoverCharacteristics([Self.notifyUUID, Self.writeUUID], for: service)
@@ -448,7 +448,7 @@ extension BMSConnection: CBPeripheralDelegate {
             }
         }
         guard writeCharacteristic != nil else {
-            abortConnection("Caractéristique d'écriture FF02 introuvable.")
+            abortConnection("Write characteristic FF02 not found.")
             return
         }
         status = .connected(peripheral.name ?? "BMS")

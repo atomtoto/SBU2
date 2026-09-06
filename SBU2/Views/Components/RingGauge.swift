@@ -5,7 +5,8 @@
 
 import SwiftUI
 
-/// The circular gauge used for state of charge and for the trip dials.
+/// The circular gauge SBU drew for state of charge and for the trip dials:
+/// a grey track with a rounded progress arc starting at twelve o'clock.
 struct RingGauge<Label: View>: View {
     var fraction: Double
     var tint: Color
@@ -15,26 +16,26 @@ struct RingGauge<Label: View>: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(.tertiary, lineWidth: lineWidth)
+                .stroke(.gray.opacity(0.3), lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: max(0, min(fraction, 1)))
-                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
-                .rotationEffect(.degrees(-90))
+                .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+                .rotationEffect(.init(degrees: -90))
+                .foregroundColor(tint)
             label
-                .multilineTextAlignment(.center)
-                .padding(lineWidth * 1.6)
         }
         .animation(.easeInOut(duration: 0.4), value: fraction)
     }
 }
 
 extension Color {
-    /// Red below 10 %, amber below 25 %, green above — the thresholds SBU used.
-    static func forStateOfCharge(_ percent: Int) -> Color {
-        switch percent {
-        case ..<10: .red
-        case ..<25: .orange
-        default: .green
-        }
+    /// The overview thresholds: red below 10 %, yellow below 25 %, green above.
+    static func stateOfChargeOverview(_ percent: Int) -> Color {
+        percent < 10 ? .red : percent < 25 ? .yellow : .green
+    }
+
+    /// The trip list uses a slightly different second threshold than the overview.
+    static func stateOfChargeTrip(_ percent: Int) -> Color {
+        percent < 10 ? .red : percent < 30 ? .yellow : .green
     }
 }

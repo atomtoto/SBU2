@@ -2,10 +2,14 @@
 //  OverviewView.swift
 //  SBU2
 //
+//  Reproduces SBU's Overview_v2 box for box.
+//
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
-/// The live dashboard: state of charge, MOSFET control, cell figures and pack identity.
 struct OverviewView: View {
     @Environment(BMSConnection.self) private var connection
     @Environment(AppSettings.self) private var appSettings
@@ -16,51 +20,44 @@ struct OverviewView: View {
         @Bindable var connection = connection
 
         ScrollView {
-            LazyVStack(spacing: 12) {
-                if !connection.status.isConnected {
-                    ConnectingCard(status: connection.status)
-                }
-
+            LazyVStack(spacing: 10) {
                 if connection.settings.liontronMode == .autoEnabled {
-                    LiontronWarningCard()
+                    LiontronModeWarning()
                 }
-
-                SummaryCard(info: connection.info, capacityUnit: appSettings.capacityUnit)
-
-                MOSCard(info: connection.info,
-                        enabled: connection.canControlMOS && !connection.isWritingMOS) { change in
+                DetailBox(info: connection.info, capacityUnit: appSettings.capacityUnit)
+                    .padding(.top, 5)
+                ButtonBox(info: connection.info,
+                          settings: connection.settings,
+                          enabled: connection.canControlMOS && !connection.isWritingMOS) { change in
                     pendingMOS = change
                 }
-
-                if shouldShowChargeLimit {
-                    ChargeLimitCard(settings: $connection.settings)
+                if showChargeBox {
+                    ChargeBox(settings: $connection.settings)
                 }
-
-                CellSummaryCard(info: connection.info,
-                                summary: connection.cellSummary,
-                                remainingTime: connection.info.remainingTimeText)
-
+                CellTemperatureBox(info: connection.info,
+                                   summary: connection.cellSummary)
                 if !connection.cellVoltages.isEmpty {
-                    CellVoltageCard(voltages: connection.cellVoltages,
-                                    balancing: connection.info.balancingCells,
-                                    emptyMillivolts: Double(connection.settings.cellEmptyVoltage),
-                                    fullMillivolts: Double(connection.settings.cellFullVoltage))
+                    CellVoltageBox(voltages: connection.cellVoltages,
+                                   balancing: connection.info.balancingCells,
+                                   summary: connection.cellSummary,
+                                   emptyMillivolts: Double(connection.settings.cellEmptyVoltage),
+                                   fullMillivolts: Double(connection.settings.cellFullVoltage))
                 }
-
-                BatteryInfoCard(info: connection.info)
-
+                BatteryInfoBox(info: connection.info)
                 if let error = connection.lastError {
                     Card {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.yellow)
+                            Text(error)
+                            Spacer(minLength: 0)
+                        }
                     }
                 }
+                Spacer()
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
         }
-        .scrollDismissesKeyboard(.interactively)
         .confirmationDialog(pendingMOS?.question ?? "",
                             isPresented: Binding(get: { pendingMOS != nil },
                                                  set: { if !$0 { pendingMOS = nil } }),
@@ -72,15 +69,17 @@ struct OverviewView: View {
                     pendingMOS = nil
                 }
             }
-            Button("Annuler", role: .cancel) { pendingMOS = nil }
+            Button("Cancel", role: .cancel) { pendingMOS = nil }
         } message: {
-            Text("Cette commande est écrite dans le BMS et coupe réellement le courant sur la borne concernée.")
+            Text("This command is written to the BMS and really cuts the current on that terminal.")
         }
     }
 
-    private var shouldShowChargeLimit: Bool {
-        guard connection.settings.chargeLimitEnabled else { return false }
-        return connection.info.current > 0 || connection.settings.alwaysShowChargeLimit
+    /// SBU showed the charge box whenever current was flowing in, or when the user
+    /// asked to always see it — the first case does not test `chargeLimitEnabled`.
+    private var showChargeBox: Bool {
+        Int(connection.info.current) > 0
+            || (connection.settings.alwaysShowChargeLimit && connection.settings.chargeLimitEnabled)
     }
 }
 
@@ -93,306 +92,300 @@ struct MOSChange: Equatable {
     var confirmTitle: String
 }
 
-// MARK: - Cards
+// MARK: - Liontron warning
 
-private struct ConnectingCard: View {
-    let status: BMSConnection.Status
+private struct LiontronModeWarning: View {
+    @State private var collapsed = true
 
     var body: some View {
-        Card {
-            HStack(spacing: 12) {
-                ProgressView()
-                Text(message)
-                    .foregroundStyle(.secondary)
-                Spacer()
+        VStack {
+            Button {
+                collapsed.toggle()
+            } label: {
+                HStack(alignment: .center, spacing: 20) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .renderingMode(.original)
+                    Text("Liontron protection mode active!")
+                    Image(systemName: collapsed ? "chevron.down" : "chevron.up")
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity)
+                .background {
+                    RoundedRectangle(cornerRadius: 25, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                }
             }
-        }
-    }
+            .buttonStyle(PlainButtonStyle())
 
-    private var message: String {
-        switch status {
-        case .connecting(let name): return "Connexion à \(name)…"
-        case .bluetoothOff: return "Bluetooth désactivé."
-        default: return "Appareil non connecté."
-        }
-    }
-}
-
-private struct LiontronWarningCard: View {
-    @State private var expanded = false
-
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    withAnimation(.snappy) { expanded.toggle() }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "lock.trianglebadge.exclamationmark.fill")
-                            .foregroundStyle(.orange)
-                        Text("Protection Liontron active")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .rotationEffect(.degrees(expanded ? 180 : 0))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if expanded {
-                    Text("Ce pack a refusé une écriture. Saisissez son mot de passe matériel dans Réglages pour réactiver les commandes MOSFET.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            VStack {
+                Text("You might need to enter the hardware password in settings")
+                    .multilineTextAlignment(.center)
+                    .animation(.none, value: collapsed)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: collapsed ? 0 : .none)
+            .clipped()
+            .animation(.easeOut, value: collapsed)
+            .padding(collapsed ? 0 : 8)
+            .background {
+                RoundedRectangle(cornerRadius: 25, style: .continuous)
+                    .fill(.ultraThinMaterial)
             }
         }
     }
 }
 
-private struct SummaryCard: View {
+// MARK: - Detail box
+
+private struct DetailBox: View {
     let info: BasicInfo
     let capacityUnit: CapacityUnit
 
     var body: some View {
         Card {
-            VStack(spacing: 14) {
-                HStack(spacing: 18) {
-                    RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                              tint: .forStateOfCharge(info.stateOfCharge)) {
-                        Text(info.stateOfChargeText)
-                            .font(.title2.weight(.bold))
-                            .monospacedDigit()
-                            .minimumScaleFactor(0.6)
-                            .lineLimit(1)
-                    }
-                    .frame(width: 116, height: 116)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(info.powerText)
-                            .font(.title3.weight(.bold))
-                            .monospacedDigit()
-                            .foregroundStyle(info.current >= 0 ? Color.green : Color.primary)
-                        LabelledValue(title: "Courant", value: info.currentText)
-                        LabelledValue(title: "Tension", value: info.voltageText)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .center, spacing: 20) {
+                RingGauge(fraction: Double(info.stateOfCharge) / 100,
+                          tint: .stateOfChargeOverview(info.stateOfCharge)) {
+                    Text(info.stateOfChargeText)
+                        .font(.system(size: 24, weight: .bold))
                 }
+                .frame(width: 140, height: 120)
 
                 Divider()
 
-                LabelledValue(title: "Capacité", value: info.capacityText(unit: capacityUnit))
-                if let remaining = info.remainingTimeText {
-                    LabelledValue(title: info.current > 0 ? "Charge complète dans" : "Autonomie restante",
-                                  value: remaining)
+                VStack(alignment: .leading, spacing: 13) {
+                    Text(info.powerText)
+                        .font(.system(size: 19, weight: .bold))
+                    Text(info.currentText)
+                        .font(.system(size: 14, weight: .bold))
+                    Text(info.voltageText)
+                        .font(.system(size: 14, weight: .bold))
+                    Text(info.capacityText(unit: capacityUnit))
+                        .font(.system(size: 13, weight: .bold))
+                        .lineLimit(1)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 }
 
-private struct LabelledValue: View {
-    let title: String
-    let value: String
+// MARK: - Charge / discharge buttons
 
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(value).monospacedDigit()
-        }
-        .font(.subheadline)
-    }
-}
-
-private struct MOSCard: View {
+private struct ButtonBox: View {
     let info: BasicInfo
+    let settings: DeviceSettings
     let enabled: Bool
     let onChange: (MOSChange) -> Void
 
+    private static let on = Color(red: 0, green: 0.6, blue: 0.1)
+    private static let off = Color(red: 0.8, green: 0.3, blue: 0.05)
+
+    /// Blue with a clock badge when the charge is being held back on purpose.
+    private var chargeHeldForLater: Bool {
+        settings.chargeLimitEnabled && settings.refillLaterEnabled && !info.chargeMOSEnabled
+    }
+
+    private var chargeColor: Color {
+        if chargeHeldForLater { return .blue }
+        guard settings.liontronMode != .autoEnabled else { return .gray }
+        return info.chargeMOSEnabled ? Self.on : Self.off
+    }
+
+    private var chargeSymbol: String {
+        if chargeHeldForLater { return "bolt.badge.clock.fill" }
+        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
+        return info.chargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
+    }
+
+    private var dischargeColor: Color {
+        guard settings.liontronMode != .autoEnabled else { return .gray }
+        return info.dischargeMOSEnabled ? Self.on : Self.off
+    }
+
+    private var dischargeSymbol: String {
+        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
+        return info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
+    }
+
     var body: some View {
-        Card {
-            HStack(spacing: 12) {
-                MOSButton(title: "Charge",
-                          isOn: info.chargeMOSEnabled,
-                          enabled: enabled) {
+        Card(padding: 0) {
+            HStack(alignment: .center, spacing: 20) {
+                MOSButton(title: "Charging", color: chargeColor, symbol: chargeSymbol) {
                     onChange(MOSChange(charge: !info.chargeMOSEnabled,
                                        discharge: info.dischargeMOSEnabled,
                                        isDisabling: info.chargeMOSEnabled,
-                                       question: info.chargeMOSEnabled ? "Couper la charge ?" : "Activer la charge ?",
-                                       confirmTitle: info.chargeMOSEnabled ? "Couper la charge" : "Activer la charge"))
+                                       question: info.chargeMOSEnabled ? "Disable charging?" : "Enable charging?",
+                                       confirmTitle: info.chargeMOSEnabled ? "Disable charging" : "Enable charging"))
                 }
-                MOSButton(title: "Décharge",
-                          isOn: info.dischargeMOSEnabled,
-                          enabled: enabled) {
+                MOSButton(title: "Discharging", color: dischargeColor, symbol: dischargeSymbol) {
                     onChange(MOSChange(charge: info.chargeMOSEnabled,
                                        discharge: !info.dischargeMOSEnabled,
                                        isDisabling: info.dischargeMOSEnabled,
-                                       question: info.dischargeMOSEnabled ? "Couper la décharge ?" : "Activer la décharge ?",
-                                       confirmTitle: info.dischargeMOSEnabled ? "Couper la décharge" : "Activer la décharge"))
+                                       question: info.dischargeMOSEnabled ? "Disable discharging?" : "Enable discharging?",
+                                       confirmTitle: info.dischargeMOSEnabled ? "Disable discharging" : "Enable discharging"))
                 }
             }
+            .padding(.vertical, 10)
+            .animation(.easeInOut(duration: 0.25), value: chargeColor)
+            .animation(.easeInOut(duration: 0.25), value: dischargeColor)
         }
+        .disabled(!enabled)
     }
 }
 
 private struct MOSButton: View {
     let title: String
-    let isOn: Bool
-    let enabled: Bool
+    let color: Color
+    let symbol: String
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: isOn ? "bolt.fill" : "bolt.slash.fill")
-                Text(title)
+        Button {
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            #endif
+            action()
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(color)
+                    .frame(width: 140, height: 35)
+                HStack {
+                    Text(title)
+                        .font(.system(size: 16))
+                    Image(systemName: symbol)
+                }
+                .foregroundColor(.white)
             }
-            .font(.subheadline.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 38)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(enabled ? (isOn ? .green : .orange) : .gray)
-        .disabled(!enabled)
-        .animation(.easeInOut(duration: 0.25), value: isOn)
-        .accessibilityLabel("\(title) : \(isOn ? "activée" : "coupée")")
+        .accessibilityLabel(title)
     }
 }
 
-private struct CellSummaryCard: View {
+// MARK: - Temperatures and cell extremes
+
+private struct CellTemperatureBox: View {
     let info: BasicInfo
     let summary: CellSummary?
-    let remainingTime: String?
 
     var body: some View {
-        Card {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    if info.temperatures.isEmpty {
-                        Text("Aucune sonde de température")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+        HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
+                    HStack(alignment: .top) {
+                        Image(systemName: "thermometer")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        CircleNumber(number: index + 1)
+                            .padding(.trailing, 4)
+                        Text(info.temperatureText(value))
+                            .monospacedDigit()
+                        Spacer()
                     }
-                    ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
-                        HStack(spacing: 8) {
-                            Image(systemName: "thermometer.medium")
-                                .frame(width: 18)
-                                .foregroundStyle(.secondary)
-                            IndexBadge(number: index + 1)
-                            Text(info.temperatureText(value)).monospacedDigit()
-                            Spacer(minLength: 0)
-                        }
-                        .font(.subheadline)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Sonde \(index + 1), \(info.temperatureText(value))")
-                    }
-                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    if let summary {
-                        CellExtremeRow(systemImage: "arrow.down.to.line",
-                                       index: summary.lowestIndex + 1,
-                                       value: summary.lowest.formatted(decimals: 3, unit: "V"),
-                                       tint: .orange,
-                                       accessibility: "Cellule la plus basse")
-                        CellExtremeRow(systemImage: "arrow.up.to.line",
-                                       index: summary.highestIndex + 1,
-                                       value: summary.highest.formatted(decimals: 3, unit: "V"),
-                                       tint: .green,
-                                       accessibility: "Cellule la plus haute")
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.up.and.down")
-                                .frame(width: 18)
-                                .foregroundStyle(.secondary)
-                            Text("Écart")
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 4)
-                            Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV"))
-                                .monospacedDigit()
-                        }
-                        .font(.subheadline)
-                    } else {
-                        Text("Tensions de cellule indisponibles")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let remainingTime {
-                        HStack(spacing: 8) {
-                            Image(systemName: "clock")
-                                .frame(width: 18)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 4)
-                            Text(remainingTime).monospacedDigit()
-                        }
-                        .font(.subheadline)
-                    }
-                    Spacer(minLength: 0)
+                if info.temperatures.isEmpty {
+                    Text("No temperature sensors available.")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let summary {
+                    HStack(alignment: .top) {
+                        Image(systemName: "battery.25")
+                            .frame(width: 20, height: 20, alignment: .center)
+                            .rotationEffect(.degrees(-90))
+                        CircleNumber(number: summary.lowestIndex + 1)
+                        Text(summary.lowest.formatted(decimals: 3, unit: "V")).monospacedDigit()
+                        Spacer()
+                    }
+                    HStack(alignment: .top) {
+                        Image(systemName: "battery.75")
+                            .frame(width: 20, height: 20, alignment: .center)
+                            .rotationEffect(.degrees(-90))
+                        CircleNumber(number: summary.highestIndex + 1)
+                        Text(summary.highest.formatted(decimals: 3, unit: "V")).monospacedDigit()
+                        Spacer()
+                    }
+                    HStack(alignment: .top) {
+                        Text("△")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        Spacer(minLength: 8)
+                        Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
+                        Spacer()
+                    }
+                }
+                if info.current > 0, let remaining = info.remainingTimeText {
+                    HStack(alignment: .top) {
+                        Image(systemName: "clock.badge.checkmark")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        Spacer(minLength: 8)
+                        Text(remaining).monospacedDigit()
+                        Spacer()
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.leading, 4)
+        }
+        .padding(.horizontal)
+        .padding(.top)
+        .padding(.bottom, 3)
+        .frame(maxWidth: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                .fill(.ultraThinMaterial)
         }
     }
 }
 
-private struct CellExtremeRow: View {
-    let systemImage: String
-    let index: Int
-    let value: String
-    let tint: Color
-    let accessibility: String
+// MARK: - Per-cell voltages
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .frame(width: 18)
-                .foregroundStyle(tint)
-            IndexBadge(number: index)
-            Text(value).monospacedDigit()
-            Spacer(minLength: 0)
-        }
-        .font(.subheadline)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(accessibility) : cellule \(index), \(value)")
-    }
-}
-
-private struct CellVoltageCard: View {
+private struct CellVoltageBox: View {
     let voltages: [Double]
     let balancing: Set<Int>
+    let summary: CellSummary?
     let emptyMillivolts: Double
     let fullMillivolts: Double
 
     var body: some View {
         Card {
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(Array(voltages.enumerated()), id: \.offset) { index, voltage in
-                    HStack(spacing: 8) {
-                        IndexBadge(number: index + 1)
-                        Text(voltage.formatted(decimals: 3, unit: "V"))
-                            .font(.subheadline)
-                            .monospacedDigit()
-                            .frame(width: 74, alignment: .leading)
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                            .opacity(balancing.contains(index) ? 1 : 0)
-                            .accessibilityHidden(!balancing.contains(index))
-                            .accessibilityLabel("Équilibrage en cours")
-                        CellBar(fraction: fraction(for: voltage))
+                    if voltage > 0 {
+                        HStack(alignment: .center) {
+                            Image(systemName: symbol(for: index))
+                                .frame(width: 20, height: 20, alignment: .center)
+                                .rotationEffect(.degrees(-90))
+                            CircleNumber(number: index + 1)
+                                .padding(.trailing, 4)
+                            Text(voltage.formatted(decimals: 3, unit: "V"))
+                                .monospacedDigit()
+                            Spacer(minLength: 30)
+                            Image(systemName: "bolt.fill")
+                                .frame(width: 20, height: 20)
+                                .opacity(balancing.contains(index) ? 1 : 0)
+                                .animation(.easeIn(duration: 0.4), value: balancing.contains(index))
+                            Spacer()
+                            CellVoltageBar(fraction: fraction(for: voltage))
+                                .offset(y: 6)
+                        }
                     }
-                    .accessibilityElement(children: .combine)
                 }
             }
         }
     }
 
-    /// Where the cell sits between the configured empty and full voltages.
+    private func symbol(for index: Int) -> String {
+        guard let summary else { return "battery.50" }
+        if index == summary.lowestIndex { return "battery.25" }
+        if index == summary.highestIndex { return "battery.75" }
+        return "battery.50"
+    }
+
     private func fraction(for voltage: Double) -> Double {
         let span = fullMillivolts - emptyMillivolts
         guard span > 0 else { return 0 }
@@ -400,51 +393,61 @@ private struct CellVoltageCard: View {
     }
 }
 
-private struct CellBar: View {
+private struct CellVoltageBar: View {
     let fraction: Double
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule()
-                    .fill(Color.accentColor)
-                    .frame(width: geometry.size.width * fraction)
+                Rectangle()
+                    .foregroundColor(Color.gray.opacity(0.3))
+                    .cornerRadius(10)
+                    .frame(height: 11)
+                Rectangle()
+                    .foregroundColor(Color.accentColor)
+                    .cornerRadius(10)
+                    .frame(width: geometry.size.width * fraction, height: 11)
             }
         }
-        .frame(height: 10)
+        .frame(height: 11)
         .animation(.easeInOut(duration: 0.4), value: fraction)
     }
 }
 
-private struct BatteryInfoCard: View {
+// MARK: - Pack identity and protections
+
+private struct BatteryInfoBox: View {
     let info: BasicInfo
 
     var body: some View {
         Card {
-            VStack(spacing: 10) {
-                LabelledValue(title: "Cellules", value: "\(info.cellCount)")
-                LabelledValue(title: "Cycles", value: "\(info.cycles)")
-                if !info.softwareVersion.isEmpty {
-                    LabelledValue(title: "Version", value: info.softwareVersion)
+            VStack(alignment: .center, spacing: 8) {
+                HStack {
+                    Text("Cycle count")
+                    Spacer()
+                    Text("\(info.cycles)")
                 }
-                if let date = info.productionDate {
-                    LabelledValue(title: "Fabrication",
-                                  value: date.formatted(date: .abbreviated, time: .omitted))
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text(info.softwareVersion)
                 }
-
+                HStack {
+                    Text("Production date")
+                    Spacer()
+                    Text(info.productionDate.map {
+                        DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .none)
+                    } ?? "—")
+                }
                 if !info.protections.isEmpty {
                     Divider()
                     ForEach(info.protections.sorted { $0.rawValue < $1.rawValue }) { protection in
                         HStack {
                             Text(protection.label)
-                            Spacer(minLength: 8)
-                            Image(systemName: protection.isCritical
-                                  ? "exclamationmark.triangle.fill"
-                                  : "info.circle.fill")
+                            Spacer(minLength: 0)
+                            Image(systemName: protection.symbol)
+                                .foregroundColor(protection.tint)
                         }
-                        .font(.subheadline)
-                        .foregroundStyle(protection.isCritical ? Color.red : Color.secondary)
                     }
                 }
             }

@@ -15,9 +15,9 @@ enum Appearance: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: return "Système"
-        case .light: return "Clair"
-        case .dark: return "Sombre"
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
         }
     }
 }
@@ -96,9 +96,9 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .classic: return "Classique"
-        case .vehicle: return "Véhicule"
-        case .storage: return "Stockage fixe"
+        case .classic: return "Classic"
+        case .vehicle: return "Vehicle"
+        case .storage: return "Stationary storage"
         }
     }
 }
@@ -113,9 +113,9 @@ enum LiontronMode: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .autoDisabled: return "Auto (inactif)"
-        case .autoEnabled: return "Auto (actif)"
-        case .disabled: return "Désactivé"
+        case .autoDisabled: return "Auto (off)"
+        case .autoEnabled: return "Auto (on)"
+        case .disabled: return "Disabled"
         }
     }
 }
@@ -127,8 +127,8 @@ enum ChargeLimitMode: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .stateOfCharge: return "SoC (%)"
-        case .cellVoltage: return "Tension"
+        case .stateOfCharge: return "SOC (%)"
+        case .cellVoltage: return "Voltage"
         }
     }
 }

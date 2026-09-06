@@ -21,20 +21,28 @@ struct DeviceTabsView: View {
             OverviewView()
                 .navigationTitle(deviceName)
                 .navigationBarTitleDisplayMode(.inline)
-                .tabItem { Label("Overview", systemImage: "chart.bar.doc.horizontal") }
+                .tabItem { Label("Overview", systemImage: "chart.bar.doc.horizontal.fill") }
 
             if connection.settings.kind == .vehicle {
-                TripView()
-                    .navigationTitle("Trajet")
+                GPSView()
+                    .navigationTitle(deviceName)
                     .navigationBarTitleDisplayMode(.inline)
-                    .tabItem { Label("Trajet", systemImage: "location.north.line.fill") }
+                    .tabItem { Label("GPS", systemImage: Self.gpsSymbol) }
             }
 
             DeviceSettingsView()
-                .tabItem { Label("Réglages", systemImage: "slider.horizontal.3") }
+                .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }
         .onChange(of: connection.settings) { _, _ in
             connection.saveSettings()
         }
+    }
+
+    /// SBU switched to the newer symbol once it became available.
+    private static var gpsSymbol: String {
+        if #available(iOS 18.0, *) {
+            return "powermeter"
+        }
+        return "location.north.line.fill"
     }
 }
