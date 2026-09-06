@@ -62,7 +62,8 @@ final class BMSConnection: NSObject {
     private(set) var cellVoltages: [Double] = []
     private(set) var lastUpdate: Date?
     private(set) var lastError: String?
-    private(set) var isWritingMOS = false
+    /// Tracks the MOSFET command currently waiting for the pack to confirm it.
+    private(set) var mosWrite = MOSWriteTracker()
     private(set) var passwordOutcome: WriteOutcome = .idle
 
     /// Settings of the device currently open. Call `saveSettings()` after changing it —
@@ -182,7 +183,7 @@ final class BMSConnection: NSObject {
         info = BasicInfo()
         cellVoltages = []
         lastUpdate = nil
-        isWritingMOS = false
+        mosWrite.cancel()
         writeCharacteristic = nil
     }
 
@@ -212,11 +213,18 @@ final class BMSConnection: NSObject {
     }
 
     private func poll() {
+        // The poll tick doubles as the deadline check for a MOSFET command.
+        if mosWrite.expire() {
+            lastError = "The BMS did not confirm the command within \(Int(MOSWriteTracker.timeout)) seconds."
+        }
         if demo != nil {
             demo?.step()
             info = demo?.info ?? BasicInfo()
             cellVoltages = demo?.cellVoltages ?? []
             lastUpdate = .now
+            // The demo pack never goes through `handle`, so reconcile here too.
+            mosWrite.reconcile(chargeEnabled: info.chargeMOSEnabled,
+                               dischargeEnabled: info.dischargeMOSEnabled)
             return
         }
         send(JBD.readRequest(.basicInfo))
@@ -245,23 +253,27 @@ final class BMSConnection: NSObject {
         status.isConnected && settings.liontronMode != .autoEnabled
     }
 
-    func setMOS(charge: Bool, discharge: Bool) {
-        guard status.isConnected else { return }
+    /// Sends a MOSFET command and waits for the pack to report the requested state.
+    ///
+    /// Nothing is sent while another command is unresolved: the BMS applies these
+    /// inside a factory-mode bracket, and interleaving two of them is how you end up
+    /// with a state neither the app nor the user asked for.
+    func setMOS(terminal: MOSWriteTracker.Terminal, charge: Bool, discharge: Bool) {
+        guard canControlMOS, !mosWrite.isBusy else { return }
+        guard mosWrite.begin(terminal: terminal, charge: charge, discharge: discharge) else { return }
         lastError = nil
 
         if demo != nil {
-            demo?.setMOS(charge: charge, discharge: discharge)
-            info = demo?.info ?? info
+            // The simulated pack has no radio, so apply the change on a short delay —
+            // otherwise the spinner would never be visible on the demo device.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self, self.demo != nil, self.mosWrite.isBusy else { return }
+                self.demo?.setMOS(charge: charge, discharge: discharge)
+            }
             return
         }
 
-        isWritingMOS = true
         write(JBD.mosControl(charge: charge, discharge: discharge))
-        // The switches reflect what the BMS reports, so release the UI once the next
-        // poll has had time to land.
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pollInterval * 2) { [weak self] in
-            self?.isWritingMOS = false
-        }
     }
 
     // MARK: - Hardware password
@@ -314,6 +326,8 @@ final class BMSConnection: NSObject {
             if let decoded = BasicInfo.decode(payload: response.payload) {
                 info = decoded
                 lastUpdate = .now
+                mosWrite.reconcile(chargeEnabled: decoded.chargeMOSEnabled,
+                                   dischargeEnabled: decoded.dischargeMOSEnabled)
             }
         case JBD.Register.cellVoltages.rawValue:
             cellVoltages = CellVoltages.decode(payload: response.payload)
@@ -336,6 +350,7 @@ final class BMSConnection: NSObject {
             settings.hasPassword = true
             saveSettings()
         case JBD.Register.mosControl.rawValue, JBD.Register.factoryModeOpen.rawValue:
+            mosWrite.cancel()
             // 0x80 on a factory-mode write is how a hardware-locked Liontron pack answers.
             if status == 0x80, settings.liontronMode == .autoDisabled {
                 settings.liontronMode = .autoEnabled

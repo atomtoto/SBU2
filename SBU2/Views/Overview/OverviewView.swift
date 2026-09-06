@@ -14,7 +14,7 @@ struct OverviewView: View {
     @Environment(BMSConnection.self) private var connection
     @Environment(AppSettings.self) private var appSettings
 
-    @State private var pendingMOS: MOSChange?
+    @State private var confirmation: MOSChange?
 
     var body: some View {
         @Bindable var connection = connection
@@ -28,8 +28,9 @@ struct OverviewView: View {
                     .padding(.top, 5)
                 ButtonBox(info: connection.info,
                           settings: connection.settings,
-                          enabled: connection.canControlMOS && !connection.isWritingMOS) { change in
-                    pendingMOS = change
+                          enabled: connection.canControlMOS,
+                          mosWrite: connection.mosWrite) { change in
+                    confirmation = change
                 }
                 if showChargeBox {
                     ChargeBox(settings: $connection.settings)
@@ -58,18 +59,20 @@ struct OverviewView: View {
             }
             .padding(.horizontal, 10)
         }
-        .confirmationDialog(pendingMOS?.question ?? "",
-                            isPresented: Binding(get: { pendingMOS != nil },
-                                                 set: { if !$0 { pendingMOS = nil } }),
+        .confirmationDialog(confirmation?.question ?? "",
+                            isPresented: Binding(get: { confirmation != nil },
+                                                 set: { if !$0 { confirmation = nil } }),
                             titleVisibility: .visible) {
-            if let change = pendingMOS {
+            if let change = confirmation {
                 Button(change.confirmTitle,
                        role: change.isDisabling ? ButtonRole.destructive : nil) {
-                    connection.setMOS(charge: change.charge, discharge: change.discharge)
-                    pendingMOS = nil
+                    connection.setMOS(terminal: change.terminal,
+                                      charge: change.charge,
+                                      discharge: change.discharge)
+                    confirmation = nil
                 }
             }
-            Button("Cancel", role: .cancel) { pendingMOS = nil }
+            Button("Cancel", role: .cancel) { confirmation = nil }
         } message: {
             Text("This command is written to the BMS and really cuts the current on that terminal.")
         }
@@ -85,6 +88,7 @@ struct OverviewView: View {
 
 /// A requested MOSFET state, held until the user confirms it.
 struct MOSChange: Equatable {
+    var terminal: MOSWriteTracker.Terminal
     var charge: Bool
     var discharge: Bool
     var isDisabling: Bool
@@ -175,6 +179,7 @@ private struct ButtonBox: View {
     let info: BasicInfo
     let settings: DeviceSettings
     let enabled: Bool
+    let mosWrite: MOSWriteTracker
     let onChange: (MOSChange) -> Void
 
     private static let on = Color(red: 0, green: 0.6, blue: 0.1)
@@ -210,15 +215,25 @@ private struct ButtonBox: View {
     var body: some View {
         Card(padding: 0) {
             HStack(alignment: .center, spacing: 20) {
-                MOSButton(title: "Charging", color: chargeColor, symbol: chargeSymbol) {
-                    onChange(MOSChange(charge: !info.chargeMOSEnabled,
+                MOSButton(title: "Charging",
+                          color: chargeColor,
+                          symbol: chargeSymbol,
+                          isWaiting: mosWrite.isWaiting(for: .charge),
+                          isBusy: mosWrite.isBusy) {
+                    onChange(MOSChange(terminal: .charge,
+                                       charge: !info.chargeMOSEnabled,
                                        discharge: info.dischargeMOSEnabled,
                                        isDisabling: info.chargeMOSEnabled,
                                        question: info.chargeMOSEnabled ? "Disable charging?" : "Enable charging?",
                                        confirmTitle: info.chargeMOSEnabled ? "Disable charging" : "Enable charging"))
                 }
-                MOSButton(title: "Discharging", color: dischargeColor, symbol: dischargeSymbol) {
-                    onChange(MOSChange(charge: info.chargeMOSEnabled,
+                MOSButton(title: "Discharging",
+                          color: dischargeColor,
+                          symbol: dischargeSymbol,
+                          isWaiting: mosWrite.isWaiting(for: .discharge),
+                          isBusy: mosWrite.isBusy) {
+                    onChange(MOSChange(terminal: .discharge,
+                                       charge: info.chargeMOSEnabled,
                                        discharge: !info.dischargeMOSEnabled,
                                        isDisabling: info.dischargeMOSEnabled,
                                        question: info.dischargeMOSEnabled ? "Disable discharging?" : "Enable discharging?",
@@ -237,6 +252,10 @@ private struct MOSButton: View {
     let title: String
     let color: Color
     let symbol: String
+    /// This button is the one waiting for the pack to confirm.
+    let isWaiting: Bool
+    /// Either button is waiting, so neither accepts a tap.
+    let isBusy: Bool
     let action: () -> Void
 
     var body: some View {
@@ -253,12 +272,33 @@ private struct MOSButton: View {
                 HStack {
                     Text(title)
                         .font(.system(size: 16))
-                    Image(systemName: symbol)
+                    // A fixed slot, so swapping the bolt for the spinner does not
+                    // shift the label.
+                    ZStack {
+                        if isWaiting {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .controlSize(.small)
+                                .tint(.white)
+                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                        } else {
+                            Image(systemName: symbol)
+                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                        }
+                    }
+                    .frame(width: 20, height: 20)
                 }
                 .foregroundColor(.white)
             }
         }
+        // Blocking hit testing rather than .disabled keeps the spinner at full
+        // strength while the button is unavailable.
+        .allowsHitTesting(!isBusy)
+        .opacity(isBusy && !isWaiting ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.2), value: isWaiting)
+        .animation(.easeInOut(duration: 0.2), value: isBusy)
         .accessibilityLabel(title)
+        .accessibilityValue(isWaiting ? "Waiting for the BMS" : "")
     }
 }
 
