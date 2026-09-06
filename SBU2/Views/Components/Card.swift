@@ -5,10 +5,11 @@
 
 import SwiftUI
 
-/// The rounded panel every overview section sits in.
+/// The rounded panel every overview and trip section sits in.
 ///
-/// On iOS 26 it uses Liquid Glass; below that it falls back to the material SBU used,
-/// so the layout is identical and only the surface changes.
+/// This is SBU's surface, reproduced: a 25pt continuous rounded rectangle filled
+/// with `.ultraThinMaterial`. The device list and the settings forms use the
+/// system's own materials, so they pick up Liquid Glass on iOS 26 on their own.
 struct Card<Content: View>: View {
     var padding: CGFloat = 16
     @ViewBuilder var content: Content
@@ -17,37 +18,24 @@ struct Card<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity)
-            .modifier(CardSurface())
+            .background {
+                RoundedRectangle(cornerRadius: 25, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
     }
 }
 
-private struct CardSurface: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect(in: .rect(cornerRadius: 26))
-        } else {
-            content.background(.ultraThinMaterial,
-                               in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        }
-    }
-}
-
-/// Section heading used inside cards, matching the weight of a grouped list header.
-struct CardHeader: View {
-    let title: String
-    var systemImage: String?
+/// The numbered circle SBU used beside every cell and temperature probe.
+struct CircleNumber: View {
+    let number: Int
 
     var body: some View {
-        HStack(spacing: 6) {
-            if let systemImage {
-                Image(systemName: systemImage)
-                    .font(.caption)
-            }
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            Spacer()
+        ZStack {
+            Circle()
+                .foregroundColor(Color(uiColor: .tertiarySystemBackground))
+            Text("\(number)")
         }
-        .foregroundStyle(.secondary)
+        .frame(width: 25, height: 25, alignment: .center)
+        .aspectRatio(1, contentMode: .fit)
     }
 }

@@ -14,36 +14,36 @@ struct AppSettingsView: View {
 
         Form {
             Section {
-                Toggle("Appareil de démonstration", isOn: $settings.showDemoDevice)
+                Toggle("Enable Demo Device", isOn: $settings.showDemoDevice)
             } header: {
-                Text("Connexion")
+                Text("Connection")
             } footer: {
-                Text("Ajoute un pack simulé à la liste pour explorer l'application sans BMS à portée.")
+                Text("Adds a simulated pack to the list so you can explore the app with no BMS in range.")
             }
 
             Section {
-                Picker("Unité de capacité", selection: $settings.capacityUnit) {
+                Picker("Preferred capacity unit", selection: $settings.capacityUnit) {
                     ForEach(CapacityUnit.allCases) { unit in
                         Text(unit.label).tag(unit)
                     }
                 }
                 .pickerStyle(.segmented)
             } header: {
-                Text("Unités")
+                Text("Units")
             } footer: {
-                Text("Change l'affichage de la capacité restante dans l'overview. Les kWh sont estimés à partir de la tension mesurée du pack.")
+                Text("This changes the display of the remaining capacity in Overview. kWh are estimated from the measured pack voltage.")
             }
 
             Section {
-                Toggle("Empêcher la mise en veille", isOn: $settings.keepScreenAwake)
+                Toggle("Disable automatic standby", isOn: $settings.keepScreenAwake)
             } header: {
-                Text("Écran")
+                Text("Sleep")
             } footer: {
-                Text("Garde l'écran allumé tant que l'application est au premier plan.")
+                Text("Keeps the screen awake while the app is in the foreground.")
             }
 
-            Section("Apparence") {
-                Picker("Thème", selection: $settings.appearance) {
+            Section("Theme") {
+                Picker("Select Theme", selection: $settings.appearance) {
                     ForEach(Appearance.allCases) { appearance in
                         Text(appearance.label).tag(appearance)
                     }
@@ -51,16 +51,16 @@ struct AppSettingsView: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("Application") {
+            Section("App") {
                 NavigationLink {
                     AboutView()
                 } label: {
-                    Label("À propos", systemImage: "info.circle")
+                    Label("About this app", systemImage: "info.circle")
                 }
                 LabeledContent("Version", value: AppSettings.versionString)
             }
         }
-        .navigationTitle("Réglages")
+        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -85,22 +85,22 @@ struct AboutView: View {
             }
 
             Section {
-                Text("Application de supervision pour les BMS JBD, également vendus sous les noms Xiaoxiang, Overkill Solar ou LLT Power.")
+                Text("Monitoring app for JBD smart BMS, also sold as Xiaoxiang, Overkill Solar or LLT Power.")
             }
 
-            Section("Protocole") {
-                LabeledContent("Service BLE", value: "FF00")
-                LabeledContent("Notifications", value: "FF01")
-                LabeledContent("Écriture", value: "FF02")
+            Section("Protocol") {
+                LabeledContent("BLE service", value: "FF00")
+                LabeledContent("Notify", value: "FF01")
+                LabeledContent("Write", value: "FF02")
             }
 
             Section {
-                Label("Les commandes MOSFET coupent réellement le courant du pack. Vérifiez ce qui y est branché avant de les utiliser.",
+                Label("The MOSFET commands really cut the pack current. Check what is connected before using them.",
                       systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
             }
         }
-        .navigationTitle("À propos")
+        .navigationTitle("About this app")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
