@@ -7,6 +7,9 @@ import Foundation
 import Testing
 @testable import SBU2
 
+/// The `#expect` macro lifts its sub-expressions into closures whose captures are
+/// immutable, so every mutating call is made on its own line and only the result is
+/// handed to the macro.
 @Suite("MOSFET command tracking")
 struct MOSWriteTrackerTests {
 
@@ -25,9 +28,11 @@ struct MOSWriteTrackerTests {
     @Test("A second tap is refused while a command is unresolved")
     func secondTapRefused() {
         var tracker = MOSWriteTracker()
-        #expect(tracker.begin(terminal: .charge, charge: false, discharge: true, at: start))
-        #expect(!tracker.begin(terminal: .discharge, charge: false, discharge: false, at: start))
+        let first = tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
+        let second = tracker.begin(terminal: .discharge, charge: false, discharge: false, at: start)
 
+        #expect(first)
+        #expect(!second)
         // The first request is untouched, so the wrong write cannot be sent.
         #expect(tracker.isWaiting(for: .charge))
         #expect(tracker.request?.discharge == true)
@@ -37,8 +42,9 @@ struct MOSWriteTrackerTests {
     func reconcilesOnMatchingState() {
         var tracker = MOSWriteTracker()
         tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
+        let resolved = tracker.reconcile(chargeEnabled: false, dischargeEnabled: true)
 
-        #expect(tracker.reconcile(chargeEnabled: false, dischargeEnabled: true))
+        #expect(resolved)
         #expect(!tracker.isBusy)
     }
 
@@ -46,8 +52,9 @@ struct MOSWriteTrackerTests {
     func staleFrameDoesNotResolve() {
         var tracker = MOSWriteTracker()
         tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
+        let resolved = tracker.reconcile(chargeEnabled: true, dischargeEnabled: true)
 
-        #expect(!tracker.reconcile(chargeEnabled: true, dischargeEnabled: true))
+        #expect(!resolved)
         #expect(tracker.isWaiting(for: .charge))
     }
 
@@ -55,15 +62,18 @@ struct MOSWriteTrackerTests {
     func partialMatchDoesNotResolve() {
         var tracker = MOSWriteTracker()
         tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
+        let resolved = tracker.reconcile(chargeEnabled: false, dischargeEnabled: false)
 
-        #expect(!tracker.reconcile(chargeEnabled: false, dischargeEnabled: false))
+        #expect(!resolved)
         #expect(tracker.isBusy)
     }
 
     @Test("Reconciling with no command in flight reports nothing")
     func reconcileWhenIdle() {
         var tracker = MOSWriteTracker()
-        #expect(!tracker.reconcile(chargeEnabled: true, dischargeEnabled: true))
+        let resolved = tracker.reconcile(chargeEnabled: true, dischargeEnabled: true)
+
+        #expect(!resolved)
     }
 
     @Test("The command expires once the deadline passes")
@@ -71,10 +81,12 @@ struct MOSWriteTrackerTests {
         var tracker = MOSWriteTracker()
         tracker.begin(terminal: .discharge, charge: true, discharge: false, at: start)
 
-        #expect(!tracker.expire(now: start.addingTimeInterval(9.9)))
+        let early = tracker.expire(now: start.addingTimeInterval(9.9))
+        #expect(!early)
         #expect(tracker.isBusy)
 
-        #expect(tracker.expire(now: start.addingTimeInterval(10)))
+        let onDeadline = tracker.expire(now: start.addingTimeInterval(10))
+        #expect(onDeadline)
         #expect(!tracker.isBusy)
     }
 
@@ -83,8 +95,11 @@ struct MOSWriteTrackerTests {
         var tracker = MOSWriteTracker()
         tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
 
-        #expect(tracker.expire(now: start.addingTimeInterval(30)))
-        #expect(!tracker.expire(now: start.addingTimeInterval(60)))
+        let first = tracker.expire(now: start.addingTimeInterval(30))
+        let second = tracker.expire(now: start.addingTimeInterval(60))
+
+        #expect(first)
+        #expect(!second)
     }
 
     @Test("A command confirmed before the deadline cannot expire afterwards")
@@ -92,8 +107,9 @@ struct MOSWriteTrackerTests {
         var tracker = MOSWriteTracker()
         tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
         tracker.reconcile(chargeEnabled: false, dischargeEnabled: true)
+        let expired = tracker.expire(now: start.addingTimeInterval(60))
 
-        #expect(!tracker.expire(now: start.addingTimeInterval(60)))
+        #expect(!expired)
     }
 
     @Test("Cancelling frees the buttons without reporting a timeout")
@@ -102,9 +118,11 @@ struct MOSWriteTrackerTests {
         tracker.begin(terminal: .charge, charge: false, discharge: true, at: start)
         tracker.cancel()
 
-        #expect(!tracker.isBusy)
-        #expect(!tracker.expire(now: start.addingTimeInterval(60)))
+        let expired = tracker.expire(now: start.addingTimeInterval(60))
+        let accepted = tracker.begin(terminal: .discharge, charge: true, discharge: false, at: start)
+
+        #expect(!expired)
         // A new command is accepted straight away.
-        #expect(tracker.begin(terminal: .discharge, charge: true, discharge: false, at: start))
+        #expect(accepted)
     }
 }
