@@ -11,10 +11,16 @@ struct RingGauge<Label: View>: View {
     var fraction: Double
     var tint: Color
     var lineWidth: CGFloat = 12
+    /// Puts a Liquid Glass disc behind the ring on iOS 26. Off by default: the trip
+    /// dials sit three to a row and keep the flat look SBU had.
+    var glassBackground: Bool = false
     @ViewBuilder var label: Label
 
     var body: some View {
         ZStack {
+            if glassBackground {
+                GlassDisc()
+            }
             Circle()
                 .stroke(.gray.opacity(0.3), lineWidth: lineWidth)
             Circle()
@@ -25,6 +31,18 @@ struct RingGauge<Label: View>: View {
             label
         }
         .animation(.easeInOut(duration: 0.4), value: fraction)
+    }
+}
+
+/// A Liquid Glass disc, inscribed in the frame so it lines up with the ring.
+///
+/// Nothing is drawn below iOS 26, where the effect does not exist.
+private struct GlassDisc: View {
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: .circle)
+        }
     }
 }
 

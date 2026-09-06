@@ -148,7 +148,8 @@ private struct DetailBox: View {
         Card {
             HStack(alignment: .center, spacing: 20) {
                 RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                          tint: .stateOfChargeOverview(info.stateOfCharge)) {
+                          tint: .stateOfChargeOverview(info.stateOfCharge),
+                          glassBackground: true) {
                     Text(info.stateOfChargeText)
                         .font(.system(size: 24, weight: .bold))
                 }
@@ -266,12 +267,13 @@ private struct MOSButton: View {
             action()
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 22)
                     .fill(color)
-                    .frame(width: 140, height: 35)
+                    // 44pt is Apple's minimum comfortable tap target; SBU's 35 was under it.
+                    .frame(width: 152, height: 44)
                 HStack {
                     Text(title)
-                        .font(.system(size: 16))
+                        .font(.system(size: 17))
                     // A fixed slot, so swapping the bolt for the spinner does not
                     // shift the label.
                     ZStack {
