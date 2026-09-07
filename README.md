@@ -51,15 +51,41 @@ changements qui ne touchent pas au code.
 
 | Fichier | Rôle |
 | --- | --- |
+| `SBU2/Model/Protocols/BMSProtocolAdapter.swift` | Interface commune à toutes les familles de BMS, et registre des familles connues. |
+| `SBU2/Model/Protocols/JBDAdapter.swift` | Implémentation JBD : commandes de scrutation, séquences d'écriture, lecture des réponses. |
 | `SBU2/Model/JBDProtocol.swift` | Construction et validation des trames JBD. |
 | `SBU2/Model/FrameAssembler.swift` | Recomposition des trames à partir des notifications BLE. |
 | `SBU2/Model/BMSReading.swift` | Décodage des registres `0x03` et `0x04`. |
-| `SBU2/Bluetooth/BMSConnection.swift` | Scan, connexion, interrogation périodique, écritures. |
+| `SBU2/Bluetooth/BMSConnection.swift` | Scan, connexion, file d'envoi, interrogation périodique. |
 | `SBU2/Views/DeviceListView.swift` | Liste des appareils détectés. |
 | `SBU2/Views/Overview/` | Tableau de bord du pack, repris à l'identique de SBU. |
 | `SBU2/Views/GPS/` | Cadrans et relevés de trajet, repris à l'identique de SBU. |
 | `SBU2/Views/Settings/` | Réglages appareil et application. |
 | `SBU2Tests/` | Tests du protocole et du décodage (Swift Testing). |
+
+## Plusieurs familles de BMS
+
+`BMSConnection` ne nomme jamais un registre ni une trame : il demande ses
+commandes à un `BMSProtocolAdapter` et lui redonne les octets reçus, qui lui
+reviennent sous forme d'événements (`basicInfo`, `cellVoltages`, écriture
+acceptée ou refusée). Chaque famille se décrit dans un `BMSProtocolDescriptor` :
+son profil GATT, la façon de reconnaître un appareil à partir de sa publicité
+BLE, et une fabrique. Ajouter une famille revient donc à écrire un adaptateur et
+à l'ajouter à `BMSProtocolRegistry.descriptors` — le scan couvre alors
+automatiquement son service, et aucune vue ne change. La famille retenue est
+mémorisée par appareil (`DeviceSettings.protocolID`).
+
+Seul JBD est implémenté aujourd'hui.
+
+## Une commande à la fois
+
+Le dongle est un pont série : une requête écrite pendant qu'il répond encore
+tronque la réponse en cours, et CoreBluetooth jette silencieusement une écriture
+« sans réponse » émise alors que sa propre file est pleine. Les commandes
+passent donc par une file vidée d'un cran toutes les 150 ms, et chacune attend
+la réponse de la précédente (avec expiration, et jamais pendant que des octets
+arrivent encore). Un tampon resté incomplet est abandonné au bout d'1,5 s, un
+silence de 5 s remet le flux à zéro, un silence de 12 s relance la liaison.
 
 ## Protocole JBD en deux mots
 

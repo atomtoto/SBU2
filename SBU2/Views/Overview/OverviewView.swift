@@ -358,12 +358,17 @@ private struct CellTemperatureBox: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if let summary {
+                    // Tinted like the per-cell list below: the weakest cell red, the
+                    // strongest green, and neither while the pack reads flat.
+                    let spread = summary.highest > summary.lowest
                     HStack(alignment: .top) {
                         Image(systemName: "battery.25")
                             .frame(width: 20, height: 20, alignment: .center)
                             .rotationEffect(.degrees(-90))
                         CircleNumber(number: summary.lowestIndex + 1)
-                        Text(summary.lowest.formatted(decimals: 3, unit: "V")).monospacedDigit()
+                        Text(summary.lowest.formatted(decimals: 3, unit: "V"))
+                            .monospacedDigit()
+                            .foregroundStyle(spread ? Color.red : Color.primary)
                         Spacer()
                     }
                     HStack(alignment: .top) {
@@ -371,7 +376,9 @@ private struct CellTemperatureBox: View {
                             .frame(width: 20, height: 20, alignment: .center)
                             .rotationEffect(.degrees(-90))
                         CircleNumber(number: summary.highestIndex + 1)
-                        Text(summary.highest.formatted(decimals: 3, unit: "V")).monospacedDigit()
+                        Text(summary.highest.formatted(decimals: 3, unit: "V"))
+                            .monospacedDigit()
+                            .foregroundStyle(spread ? Color.green : Color.primary)
                         Spacer()
                     }
                     HStack(alignment: .top) {
@@ -416,31 +423,47 @@ private struct CellVoltageBox: View {
     let emptyMillivolts: Double
     let fullMillivolts: Double
 
+    /// One populated cell. A struct rather than a tuple so `ForEach` has something
+    /// to identify rows by when unpopulated cells are filtered out.
+    private struct Cell: Identifiable {
+        var index: Int
+        var voltage: Double
+        var id: Int { index }
+    }
+
     var body: some View {
         Card {
-            VStack(spacing: 8) {
-                ForEach(Array(voltages.enumerated()), id: \.offset) { index, voltage in
-                    if voltage > 0 {
-                        HStack(alignment: .center) {
-                            Image(systemName: symbol(for: index))
-                                .frame(width: 20, height: 20, alignment: .center)
-                                .rotationEffect(.degrees(-90))
-                            CircleNumber(number: index + 1)
-                                .padding(.trailing, 4)
-                            Text(voltage.formatted(decimals: 3, unit: "V"))
-                                .monospacedDigit()
-                            Spacer(minLength: 30)
-                            Image(systemName: "bolt.fill")
-                                .frame(width: 20, height: 20)
-                                .opacity(balancing.contains(index) ? 1 : 0)
-                                .animation(.easeIn(duration: 0.4), value: balancing.contains(index))
-                            Spacer()
-                            CellVoltageBar(fraction: fraction(for: voltage))
-                                .offset(y: 6)
-                        }
+            // A grid, not a stack of HStacks: every column is as wide as the widest
+            // cell in it, on every row, so the bars all start at the same place and
+            // sit on their own row's baseline. The old layout left the bar to fight
+            // two spacers for the leftover width and then pushed it 6pt down, which
+            // is why the bars looked like they belonged to the row below.
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                ForEach(cells) { cell in
+                    GridRow {
+                        Image(systemName: symbol(for: cell.index))
+                            .frame(width: 20, height: 20, alignment: .center)
+                            .rotationEffect(.degrees(-90))
+                        CircleNumber(number: cell.index + 1)
+                        Text(cell.voltage.formatted(decimals: 3, unit: "V"))
+                            .monospacedDigit()
+                            .foregroundStyle(tint(for: cell.index))
+                        Image(systemName: "bolt.fill")
+                            .frame(width: 20, height: 20)
+                            .opacity(balancing.contains(cell.index) ? 1 : 0)
+                            .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
+                        CellVoltageBar(fraction: fraction(for: cell.voltage))
                     }
                 }
             }
+            .animation(.easeInOut(duration: 0.4), value: summary?.lowestIndex)
+            .animation(.easeInOut(duration: 0.4), value: summary?.highestIndex)
+        }
+    }
+
+    private var cells: [Cell] {
+        voltages.enumerated().compactMap { index, voltage in
+            voltage > 0 ? Cell(index: index, voltage: voltage) : nil
         }
     }
 
@@ -449,6 +472,16 @@ private struct CellVoltageBox: View {
         if index == summary.lowestIndex { return "battery.25" }
         if index == summary.highestIndex { return "battery.75" }
         return "battery.50"
+    }
+
+    /// Red on the weakest cell, green on the strongest — the two the balancer works
+    /// on. Nothing is tinted while every cell reads the same, so a pack at rest does
+    /// not pick an arbitrary pair.
+    private func tint(for index: Int) -> Color {
+        guard let summary, summary.highest > summary.lowest else { return .primary }
+        if index == summary.lowestIndex { return .red }
+        if index == summary.highestIndex { return .green }
+        return .primary
     }
 
     private func fraction(for voltage: Double) -> Double {
@@ -462,20 +495,20 @@ private struct CellVoltageBar: View {
     let fraction: Double
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .foregroundColor(Color.gray.opacity(0.3))
-                    .cornerRadius(10)
-                    .frame(height: 11)
-                Rectangle()
-                    .foregroundColor(Color.accentColor)
-                    .cornerRadius(10)
-                    .frame(width: geometry.size.width * fraction, height: 11)
+        // The track is what claims the width — a flexible shape takes whatever the
+        // grid column offers — and the fill reads that width back through an overlay.
+        Capsule()
+            .fill(Color.gray.opacity(0.3))
+            .frame(minWidth: 60, maxWidth: .infinity)
+            .frame(height: 11)
+            .overlay(alignment: .leading) {
+                GeometryReader { geometry in
+                    Capsule()
+                        .fill(Color.accentColor)
+                        .frame(width: geometry.size.width * max(0, min(fraction, 1)))
+                }
             }
-        }
-        .frame(height: 11)
-        .animation(.easeInOut(duration: 0.4), value: fraction)
+            .animation(.easeInOut(duration: 0.4), value: fraction)
     }
 }
 

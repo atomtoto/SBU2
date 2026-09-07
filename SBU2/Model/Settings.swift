@@ -145,6 +145,11 @@ struct DeviceSettings: Codable, Equatable {
     var kind: DeviceKind = .classic
     var autoConnect = false
 
+    /// The BMS family this device speaks. `nil` on a device stored before the app
+    /// supported more than one, and on one that has never been opened — the
+    /// advertisement decides then.
+    var protocolID: BMSProtocolID?
+
     var hasPassword = false
     var password = "000000"
 

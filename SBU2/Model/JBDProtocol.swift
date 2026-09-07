@@ -27,6 +27,15 @@ enum JBD {
     /// Smallest possible frame: start + register + status + length + checksum + stop.
     static let overhead = 7
 
+    /// Where the payload length sits in a frame.
+    static let lengthIndex = 3
+
+    /// The framing `FrameAssembler` needs to cut JBD answers out of the byte stream.
+    static let frameLayout = FrameAssembler.Layout(startByte: startByte,
+                                                   stopByte: stopByte,
+                                                   overhead: overhead,
+                                                   lengthIndex: lengthIndex)
+
     enum Register: UInt8 {
         case basicInfo = 0x03
         case cellVoltages = 0x04
@@ -152,7 +161,7 @@ enum JBD {
         guard bytes.count >= overhead else { throw DecodingError.tooShort }
         guard bytes.first == startByte, bytes.last == stopByte else { throw DecodingError.badFraming }
 
-        let length = Int(bytes[3])
+        let length = Int(bytes[lengthIndex])
         guard bytes.count == overhead + length else { throw DecodingError.lengthMismatch }
 
         let payload = Array(bytes[4..<(4 + length)])

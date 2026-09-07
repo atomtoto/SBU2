@@ -11,7 +11,6 @@ struct DeviceListView: View {
     @Environment(AppSettings.self) private var appSettings
 
     @State private var opened: DiscoveredBMS?
-    @State private var showingSettings = false
     @State private var hasAutoConnected = false
 
     private let columns = [GridItem(.adaptive(minimum: 165), spacing: 12)]
@@ -46,7 +45,16 @@ struct DeviceListView: View {
             .navigationTitle("Devices")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Settings", systemImage: "gear") { showingSettings = true }
+                    // Pushed onto the stack rather than presented as a sheet, so the
+                    // settings slide in from the edge the way they did in SBU — and so
+                    // "About this app" drills down in the same stack instead of
+                    // stacking a second navigation inside a card.
+                    NavigationLink {
+                        AppSettingsView()
+                    } label: {
+                        Label("Settings", systemImage: "gear")
+                            .labelStyle(.iconOnly)
+                    }
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     if connection.status == .scanning {
@@ -57,9 +65,6 @@ struct DeviceListView: View {
             .refreshable { connection.startScanning() }
             .navigationDestination(item: $opened) { device in
                 DeviceTabsView(deviceName: connection.displayName(for: device))
-            }
-            .sheet(isPresented: $showingSettings) {
-                NavigationStack { AppSettingsView() }
             }
             .onChange(of: opened) { _, value in
                 if value == nil { connection.close() }

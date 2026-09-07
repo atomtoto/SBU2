@@ -33,11 +33,14 @@ struct DeviceSettingsView: View {
                     }
                 }
                 Toggle("Auto connect", isOn: $connection.settings.autoConnect)
-                NavigationLink {
-                    PasswordSettingsView()
-                } label: {
-                    LabeledContent("Hardware Password",
-                                   value: connection.settings.hasPassword ? "Set" : "None")
+                LabeledContent("Protocol", value: connection.protocolLabel)
+                if connection.supportsPasswordManagement {
+                    NavigationLink {
+                        PasswordSettingsView()
+                    } label: {
+                        LabeledContent("Hardware Password",
+                                       value: connection.settings.hasPassword ? "Set" : "None")
+                    }
                 }
             } header: {
                 Text("Device")

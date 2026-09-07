@@ -13,6 +13,8 @@ struct DiscoveredBMS: Identifiable, Hashable {
     var name: String
     var rssi: Int?
     var isDemo: Bool
+    /// The family this peripheral's advertisement matched.
+    var protocolID: BMSProtocolID = .jbd
 
     fileprivate var peripheral: CBPeripheral?
 
@@ -20,7 +22,22 @@ struct DiscoveredBMS: Identifiable, Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// Scans for JBD dongles, keeps one open and polls it for live values.
+/// Scans for BMS dongles, keeps one open and polls it for live values.
+///
+/// Commands leave the phone **one at a time**. The dongles are UART bridges with a
+/// small buffer: a request written while the previous answer is still streaming
+/// truncates it, and CoreBluetooth silently throws away a write-without-response
+/// issued while its own send queue is full. SBU2 used to write the
+/// basic-information request and the cell-voltage request back to back in the same
+/// run-loop tick, which is why the first of the two — state of charge, MOSFET flags,
+/// temperatures — was the reading that kept dropping out, and why it only worked
+/// close to the pack, where the link is quick enough for the first answer to finish
+/// before the second request lands. SBU never had the problem: it queued requests
+/// and drained one every 150 ms. This does the same, and additionally waits for each
+/// answer before writing the next command.
+///
+/// Nothing here names a register or a frame layout: `BMSProtocolAdapter` supplies the
+/// commands and turns the answers back into events.
 ///
 /// The central manager runs on the main queue, so every delegate callback already
 /// happens where the observable state is read from.
@@ -49,10 +66,20 @@ final class BMSConnection: NSObject {
         case rejected(String)
     }
 
-    private static let serviceUUID = CBUUID(string: "FF00")
-    private static let notifyUUID = CBUUID(string: "FF01")
-    private static let writeUUID = CBUUID(string: "FF02")
+    /// How often a fresh round of readings is asked for.
     private static let pollInterval: TimeInterval = 1.0
+    /// How often the outbox is drained. At most one command leaves per tick.
+    private static let sendInterval: TimeInterval = 0.15
+    /// How long a command holds the line while waiting for its answer.
+    private static let responseTimeout: TimeInterval = 1.0
+    /// A command is never given up on while bytes are still coming in — cutting in on
+    /// an answer in progress is the very thing that used to truncate it.
+    private static let quietBeforeGivingUp: TimeInterval = 0.3
+    /// No byte at all for this long means the stream is out of step: drop what is
+    /// buffered and start the conversation over.
+    private static let stallTimeout: TimeInterval = 5.0
+    /// Still nothing after that: the dongle is wedged and only a new link revives it.
+    private static let relinkTimeout: TimeInterval = 12.0
 
     // MARK: Observable state
 
@@ -65,6 +92,8 @@ final class BMSConnection: NSObject {
     /// Tracks the MOSFET command currently waiting for the pack to confirm it.
     private(set) var mosWrite = MOSWriteTracker()
     private(set) var passwordOutcome: WriteOutcome = .idle
+    /// The family the open device speaks.
+    private(set) var protocolID: BMSProtocolID = .jbd
 
     /// Settings of the device currently open. Call `saveSettings()` after changing it —
     /// the `@Observable` macro rewrites stored properties, so `didSet` is not a reliable
@@ -80,13 +109,32 @@ final class BMSConnection: NSObject {
 
     var cellSummary: CellSummary? { CellSummary(voltages: cellVoltages) }
 
+    var protocolLabel: String { descriptor.label }
+
+    var supportsPasswordManagement: Bool { adapter.supportsPasswordManagement }
+
+    func isValidPassword(_ password: String) -> Bool { adapter.isValidPassword(password) }
+
     // MARK: Internals
 
     @ObservationIgnored private var central: CBCentralManager!
     @ObservationIgnored private var peripheral: CBPeripheral?
     @ObservationIgnored private var writeCharacteristic: CBCharacteristic?
-    @ObservationIgnored private var assembler = FrameAssembler()
+    /// Set once the pack's notifications are actually subscribed. Requests written
+    /// before that are answered into a void.
+    @ObservationIgnored private var notifying = false
+    @ObservationIgnored private var descriptor = BMSProtocolRegistry.fallback
+    @ObservationIgnored private var adapter: any BMSProtocolAdapter = BMSProtocolRegistry.fallback.make()
+    /// Commands waiting to be written, in order.
+    @ObservationIgnored private var outbox: [BMSCommand] = []
+    /// The command whose answer the transport is waiting for.
+    @ObservationIgnored private var inFlight: BMSCommand?
+    @ObservationIgnored private var inFlightSince: Date?
+    /// When the pack last sent anything at all, complete frame or not. Used both to
+    /// avoid interrupting an answer in progress and to notice a dead conversation.
+    @ObservationIgnored private var lastNotificationAt: Date?
     @ObservationIgnored private var pollTimer: Timer?
+    @ObservationIgnored private var sendTimer: Timer?
     @ObservationIgnored private var wantsConnection = false
     @ObservationIgnored private var demo: DemoDevice?
     @ObservationIgnored private var showDemoDevice = true
@@ -124,7 +172,7 @@ final class BMSConnection: NSObject {
         refreshDemoEntry()
         guard central.state == .poweredOn else { return }
         status = .scanning
-        central.scanForPeripherals(withServices: [Self.serviceUUID])
+        central.scanForPeripherals(withServices: BMSProtocolRegistry.scanServices)
     }
 
     /// The device to open automatically, if the user asked for one.
@@ -140,6 +188,14 @@ final class BMSConnection: NSObject {
         passwordOutcome = .idle
         openDeviceID = device.id
         settings = DeviceSettingsStore.load(device.id)
+
+        // A device remembers the family it was opened with; a new one takes whatever
+        // its advertisement matched.
+        protocolID = settings.protocolID ?? device.protocolID
+        descriptor = BMSProtocolRegistry.descriptor(for: protocolID)
+        adapter = descriptor.make()
+        settings.protocolID = protocolID
+        saveSettings()
 
         if device.isDemo {
             demo = DemoDevice()
@@ -179,17 +235,19 @@ final class BMSConnection: NSObject {
     }
 
     private func resetReadings() {
-        assembler.reset()
+        adapter.reset()
         info = BasicInfo()
         cellVoltages = []
         lastUpdate = nil
         mosWrite.cancel()
         writeCharacteristic = nil
+        notifying = false
     }
 
     private func abortConnection(_ message: String) {
         lastError = message
         wantsConnection = false
+        stopPolling()
         if let peripheral {
             central.cancelPeripheralConnection(peripheral)
         } else {
@@ -197,60 +255,153 @@ final class BMSConnection: NSObject {
         }
     }
 
-    // MARK: - Polling
+    // MARK: - Timers
+
+    /// Timers added to the common run-loop modes.
+    ///
+    /// A plain `Timer.scheduledTimer` only runs in the default mode, so it stops
+    /// firing for as long as a scroll view is being dragged — the readings froze
+    /// mid-gesture and resumed when the finger came up. SBU added its timers to the
+    /// common modes for exactly this reason.
+    private func makeTimer(interval: TimeInterval, _ body: @escaping () -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: true) { _ in body() }
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
+    }
 
     private func startPolling() {
         stopPolling()
-        poll()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
-            self?.poll()
+        lastNotificationAt = .now
+        tick()
+        pollTimer = makeTimer(interval: Self.pollInterval) { [weak self] in self?.tick() }
+        if demo == nil {
+            sendTimer = makeTimer(interval: Self.sendInterval) { [weak self] in self?.pumpOutbox() }
         }
     }
 
     private func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
+        sendTimer?.invalidate()
+        sendTimer = nil
+        outbox.removeAll()
+        inFlight = nil
+        inFlightSince = nil
     }
 
-    private func poll() {
-        // The poll tick doubles as the deadline check for a MOSFET command.
+    /// One round: expire a stale MOSFET command, then ask for fresh readings.
+    private func tick() {
         if mosWrite.expire() {
             lastError = "The BMS did not confirm the command within \(Int(MOSWriteTracker.timeout)) seconds."
         }
-        if demo != nil {
-            demo?.step()
-            info = demo?.info ?? BasicInfo()
-            cellVoltages = demo?.cellVoltages ?? []
-            lastUpdate = .now
-            // The demo pack never goes through `handle`, so reconcile here too.
-            mosWrite.reconcile(chargeEnabled: info.chargeMOSEnabled,
-                               dischargeEnabled: info.dischargeMOSEnabled)
+
+        guard demo == nil else {
+            stepDemo()
             return
         }
-        send(JBD.readRequest(.basicInfo))
-        send(JBD.readRequest(.cellVoltages))
+
+        let silence = Date.now.timeIntervalSince(lastNotificationAt ?? .distantPast)
+        if silence > Self.relinkTimeout, let peripheral {
+            // Resetting the stream did not help, so the dongle itself has stopped
+            // answering. `wantsConnection` is still set, so the disconnect handler
+            // reconnects straight away.
+            lastNotificationAt = .now
+            central.cancelPeripheralConnection(peripheral)
+            return
+        }
+        if silence > Self.stallTimeout {
+            // Nothing has come back in a while. Whatever is half-received is never
+            // going to complete, so drop it and start over.
+            adapter.reset()
+            outbox.removeAll()
+            inFlight = nil
+            inFlightSince = nil
+        }
+
+        enqueuePoll()
+        pumpOutbox()
     }
 
-    private func send(_ bytes: [UInt8]) {
-        guard let peripheral, let writeCharacteristic, peripheral.state == .connected else { return }
-        peripheral.writeValue(Data(bytes), for: writeCharacteristic, type: .withoutResponse)
+    private func stepDemo() {
+        demo?.step()
+        info = demo?.info ?? BasicInfo()
+        cellVoltages = demo?.cellVoltages ?? []
+        lastUpdate = .now
+        // The demo pack never answers a command, so reconcile the tracker here too.
+        mosWrite.reconcile(chargeEnabled: info.chargeMOSEnabled,
+                           dischargeEnabled: info.dischargeMOSEnabled)
+    }
+
+    // MARK: - Outbox
+
+    /// Queues one round of reads, unless the previous round has not gone out yet.
+    ///
+    /// Skipping rather than appending is deliberate: on a weak link the queue would
+    /// otherwise grow without bound and the screen would end up showing readings
+    /// minutes old. It also keeps a write bracket contiguous — no read is ever
+    /// inserted between the commands that open and close factory mode.
+    private func enqueuePoll() {
+        guard outbox.isEmpty else { return }
+        outbox.append(contentsOf: adapter.pollCommands())
+    }
+
+    /// Queues a write bracket ahead of any pending reads.
+    private func enqueueWrite(_ commands: [BMSCommand]) {
+        guard !commands.isEmpty else { return }
+        outbox.removeAll { $0.isPoll }
+        outbox.append(contentsOf: commands)
+        pumpOutbox()
+    }
+
+    /// Writes at most one command, and only when the line is free.
+    private func pumpOutbox() {
+        guard let peripheral, let writeCharacteristic,
+              peripheral.state == .connected, notifying
+        else { return }
+
+        if inFlight != nil {
+            guard let inFlightSince,
+                  Date.now.timeIntervalSince(inFlightSince) >= Self.responseTimeout,
+                  Date.now.timeIntervalSince(lastNotificationAt ?? .distantPast) >= Self.quietBeforeGivingUp
+            else { return }
+            // The pack never answered. Let the next command through rather than
+            // holding the line for good.
+            self.inFlight = nil
+            self.inFlightSince = nil
+        }
+
+        guard !outbox.isEmpty else { return }
+
+        let type = writeType(for: writeCharacteristic)
+        // A write-without-response issued while CoreBluetooth's queue is full is
+        // dropped without telling anyone; the callback below brings us back.
+        if type == .withoutResponse, !peripheral.canSendWriteWithoutResponse { return }
+
+        let command = outbox.removeFirst()
+        peripheral.writeValue(Data(command.bytes), for: writeCharacteristic, type: type)
+        if command.expectedRegister != nil {
+            inFlight = command
+            inFlightSince = .now
+        }
+    }
+
+    /// Every dongle seen so far offers write-without-response; the fallback is there
+    /// for the ones that do not.
+    private func writeType(for characteristic: CBCharacteristic) -> CBCharacteristicWriteType {
+        characteristic.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
+    }
+
+    /// The pack answered the command holding the line, so the next one may go out.
+    private func retireInFlight(answering register: UInt8) {
+        guard let expected = inFlight?.expectedRegister, expected == register else { return }
+        inFlight = nil
+        inFlightSince = nil
     }
 
     // MARK: - Writes
 
-    /// Every write has to be bracketed: unlock if the pack is protected, open factory
-    /// mode, write, then close it again.
-    private func write(_ command: [UInt8]) {
-        if settings.hasPassword, let unlock = JBD.enterPassword(settings.password) {
-            send(unlock)
-        }
-        send(JBD.openFactoryMode)
-        send(command)
-        send(JBD.closeFactoryMode)
-    }
-
     var canControlMOS: Bool {
-        status.isConnected && settings.liontronMode != .autoEnabled
+        status.isConnected && adapter.supportsMOSControl && settings.liontronMode != .autoEnabled
     }
 
     /// Sends a MOSFET command and waits for the pack to report the requested state.
@@ -273,95 +424,87 @@ final class BMSConnection: NSObject {
             return
         }
 
-        write(JBD.mosControl(charge: charge, discharge: discharge))
+        enqueueWrite(adapter.mosCommands(charge: charge,
+                                         discharge: discharge,
+                                         password: replayPassword))
+    }
+
+    /// The password to replay before a write, or `nil` on an unprotected pack.
+    private var replayPassword: String? {
+        settings.hasPassword ? settings.password : nil
     }
 
     // MARK: - Hardware password
 
     func createPassword(_ new: String) {
-        guard let command = JBD.createPassword(new) else { return }
+        let commands = adapter.createPasswordCommands(new)
+        guard !commands.isEmpty else { return }
         passwordOutcome = .idle
-        send(JBD.openFactoryMode)
-        send(command)
-        send(JBD.closeFactoryMode)
+        enqueueWrite(commands)
         settings.password = new
         settings.hasPassword = true
         saveSettings()
     }
 
     func changePassword(to new: String) {
-        guard let command = JBD.changePassword(from: settings.password, to: new) else { return }
+        let commands = adapter.changePasswordCommands(from: settings.password, to: new)
+        guard !commands.isEmpty else { return }
         passwordOutcome = .idle
-        if let unlock = JBD.enterPassword(settings.password) { send(unlock) }
-        send(JBD.openFactoryMode)
-        send(command)
-        send(JBD.closeFactoryMode)
+        enqueueWrite(commands)
         settings.password = new
         saveSettings()
     }
 
     func removePassword() {
+        let commands = adapter.removePasswordCommands(current: settings.password)
+        guard !commands.isEmpty else { return }
         passwordOutcome = .idle
-        if let unlock = JBD.enterPassword(settings.password) { send(unlock) }
-        send(JBD.openFactoryMode)
-        send(JBD.clearPassword)
-        send(JBD.closeFactoryMode)
+        enqueueWrite(commands)
         settings.hasPassword = false
         settings.password = "000000"
         saveSettings()
     }
 
-    // MARK: - Incoming frames
+    // MARK: - Incoming events
 
-    private func handle(_ frame: [UInt8]) {
-        guard let response = try? JBD.decode(frame) else { return }
+    private func handle(_ event: BMSEvent) {
+        retireInFlight(answering: event.register)
 
-        guard response.isOK else {
-            handleError(register: response.register, status: response.status)
-            return
-        }
-
-        switch response.register {
-        case JBD.Register.basicInfo.rawValue:
-            if let decoded = BasicInfo.decode(payload: response.payload) {
-                info = decoded
-                lastUpdate = .now
-                mosWrite.reconcile(chargeEnabled: decoded.chargeMOSEnabled,
-                                   dischargeEnabled: decoded.dischargeMOSEnabled)
-            }
-        case JBD.Register.cellVoltages.rawValue:
-            cellVoltages = CellVoltages.decode(payload: response.payload)
+        switch event.kind {
+        case .basicInfo(let decoded):
+            info = decoded
             lastUpdate = .now
-        case JBD.Register.enterPassword.rawValue,
-             JBD.Register.setPassword.rawValue,
-             JBD.Register.clearPassword.rawValue:
-            passwordOutcome = .succeeded
-        default:
+            mosWrite.reconcile(chargeEnabled: decoded.chargeMOSEnabled,
+                               dischargeEnabled: decoded.dischargeMOSEnabled)
+        case .cellVoltages(let voltages):
+            cellVoltages = voltages
+            lastUpdate = .now
+        case .accepted:
             break
-        }
-    }
-
-    private func handleError(register: UInt8, status: UInt8) {
-        switch register {
-        case JBD.Register.enterPassword.rawValue,
-             JBD.Register.setPassword.rawValue,
-             JBD.Register.clearPassword.rawValue:
+        case .passwordAccepted:
+            passwordOutcome = .succeeded
+        case .passwordRejected:
             passwordOutcome = .rejected("The BMS rejected the password.")
             settings.hasPassword = true
             saveSettings()
-        case JBD.Register.mosControl.rawValue, JBD.Register.factoryModeOpen.rawValue:
+            abandonBracket()
+        case .rejected(let hardwareLocked):
             mosWrite.cancel()
-            // 0x80 on a factory-mode write is how a hardware-locked Liontron pack answers.
-            if status == 0x80, settings.liontronMode == .autoDisabled {
+            abandonBracket()
+            if hardwareLocked, settings.liontronMode == .autoDisabled {
                 settings.liontronMode = .autoEnabled
                 saveSettings()
             }
             lastError = settings.hasPassword
                 ? "The BMS rejected the command. Check the password."
                 : "The BMS rejected the command. This pack may be hardware locked."
-        default:
-            break
         }
+    }
+
+    /// Drops the rest of a refused write bracket, but keeps the command that closes
+    /// factory mode so the pack is not left open.
+    private func abandonBracket() {
+        outbox.removeAll { !$0.isPoll && !$0.isCleanup }
     }
 }
 
@@ -393,11 +536,13 @@ extension BMSConnection: CBCentralManagerDelegate {
                         rssi RSSI: NSNumber) {
         let advertised = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
             ?? peripheral.name
-            ?? "BMS inconnu"
+            ?? "Unknown BMS"
+        let family = BMSProtocolRegistry.descriptor(advertisement: advertisementData, name: advertised)
         let device = DiscoveredBMS(id: peripheral.identifier.uuidString,
                                    name: advertised,
                                    rssi: RSSI.intValue,
                                    isDemo: false,
+                                   protocolID: family.id,
                                    peripheral: peripheral)
 
         if let index = discovered.firstIndex(where: { $0.id == device.id }) {
@@ -408,8 +553,9 @@ extension BMSConnection: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        assembler.reset()
-        peripheral.discoverServices([Self.serviceUUID])
+        adapter.reset()
+        notifying = false
+        peripheral.discoverServices([descriptor.profile.service])
     }
 
     func centralManager(_ central: CBCentralManager,
@@ -442,30 +588,54 @@ extension BMSConnection: CBCentralManagerDelegate {
 extension BMSConnection: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
-            abortConnection("Service FF00 not found on this device.")
+        let profile = descriptor.profile
+        guard let service = peripheral.services?.first(where: { $0.uuid == profile.service }) else {
+            abortConnection("Service \(profile.service.uuidString) not found on this device.")
             return
         }
-        peripheral.discoverCharacteristics([Self.notifyUUID, Self.writeUUID], for: service)
+        peripheral.discoverCharacteristics([profile.notify, profile.write], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didDiscoverCharacteristicsFor service: CBService,
                     error: Error?) {
+        let profile = descriptor.profile
+        var notifyCharacteristic: CBCharacteristic?
+
         for characteristic in service.characteristics ?? [] {
             switch characteristic.uuid {
-            case Self.notifyUUID:
-                peripheral.setNotifyValue(true, for: characteristic)
-            case Self.writeUUID:
+            case profile.notify:
+                notifyCharacteristic = characteristic
+            case profile.write:
                 writeCharacteristic = characteristic
             default:
                 break
             }
         }
+
         guard writeCharacteristic != nil else {
-            abortConnection("Write characteristic FF02 not found.")
+            abortConnection("Write characteristic \(profile.write.uuidString) not found.")
             return
         }
+        guard let notifyCharacteristic else {
+            abortConnection("Notify characteristic \(profile.notify.uuidString) not found.")
+            return
+        }
+        // Polling starts from didUpdateNotificationStateFor, once the subscription is
+        // live: anything written before that is answered to nobody.
+        peripheral.setNotifyValue(true, for: notifyCharacteristic)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral,
+                    didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                    error: Error?) {
+        guard characteristic.uuid == descriptor.profile.notify else { return }
+        if let error {
+            abortConnection(error.localizedDescription)
+            return
+        }
+        notifying = characteristic.isNotifying
+        guard notifying else { return }
         status = .connected(peripheral.name ?? "BMS")
         startPolling()
     }
@@ -473,9 +643,16 @@ extension BMSConnection: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateValueFor characteristic: CBCharacteristic,
                     error: Error?) {
-        guard let data = characteristic.value else { return }
-        for frame in assembler.append(data) {
-            handle(frame)
+        guard error == nil, let data = characteristic.value, !data.isEmpty else { return }
+        lastNotificationAt = .now
+        for event in adapter.ingest(data) {
+            handle(event)
         }
+    }
+
+    /// CoreBluetooth's send queue has room again — a command held back by
+    /// `canSendWriteWithoutResponse` can go out now instead of waiting for the tick.
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        pumpOutbox()
     }
 }

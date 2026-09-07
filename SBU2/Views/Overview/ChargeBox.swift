@@ -55,16 +55,8 @@ struct ChargeBox: View {
 
             HStack {
                 Image(systemName: "arrow.up.circle.badge.clock")
-                Text("Refill the battery later")
-                Spacer()
-                Button {
-                    settings.refillLaterEnabled.toggle()
-                    impact()
-                } label: {
-                    Image(systemName: settings.refillLaterEnabled ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(settings.refillLaterEnabled ? .accentColor : .gray)
-                        .font(.system(size: 20))
-                }
+                Toggle("Refill the battery later", isOn: refillLaterBinding)
+                    .tint(.orange)
             }
             .padding(.top, 8)
             .disabled(isAtMaximum)
@@ -103,6 +95,18 @@ struct ChargeBox: View {
         settings.chargeLimitMode == .stateOfCharge
             ? settings.chargeLimitSOC == 100
             : settings.chargeLimitVoltage == cellFullVoltageLight
+    }
+
+    /// A switch rather than a checkbox, so the row reads as something that is armed
+    /// and stays armed. Orange keeps it apart from the accent colour the sliders and
+    /// the cell bars already use.
+    private var refillLaterBinding: Binding<Bool> {
+        Binding {
+            settings.refillLaterEnabled
+        } set: { newValue in
+            settings.refillLaterEnabled = newValue
+            impact()
+        }
     }
 
     /// Pulls the slider onto the detent and taps once when it lands there.
