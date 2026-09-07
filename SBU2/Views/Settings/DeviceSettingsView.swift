@@ -15,7 +15,7 @@ struct DeviceSettingsView: View {
         Form {
             if connection.openDeviceID == DemoDevice.identifier {
                 Section {
-                    Label("Appareil de démonstration : les valeurs sont simulées et aucune commande n'est envoyée.",
+                    Label("Demo device: values are simulated and no command is sent.",
                           systemImage: "wand.and.sparkles")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -23,31 +23,31 @@ struct DeviceSettingsView: View {
             }
 
             Section {
-                LabeledContent("Nom") {
-                    TextField("Nom de l'appareil", text: $connection.settings.name)
+                LabeledContent("Device name") {
+                    TextField("Device name", text: $connection.settings.name)
                         .multilineTextAlignment(.trailing)
                 }
-                Picker("Type d'appareil", selection: $connection.settings.kind) {
+                Picker("Type of Device", selection: $connection.settings.kind) {
                     ForEach(DeviceKind.allCases) { kind in
                         Text(kind.label).tag(kind)
                     }
                 }
-                Toggle("Connexion automatique", isOn: $connection.settings.autoConnect)
+                Toggle("Auto connect", isOn: $connection.settings.autoConnect)
                 NavigationLink {
                     PasswordSettingsView()
                 } label: {
-                    LabeledContent("Mot de passe matériel",
-                                   value: connection.settings.hasPassword ? "Défini" : "Aucun")
+                    LabeledContent("Hardware Password",
+                                   value: connection.settings.hasPassword ? "Set" : "None")
                 }
             } header: {
-                Text("Appareil")
+                Text("Device")
             } footer: {
-                Text("Le type d'appareil détermine les onglets disponibles : un véhicule ajoute l'onglet Trajet.")
+                Text("Changing the device type allows you to access additional menus.")
             }
 
             if connection.settings.kind == .vehicle {
                 Section {
-                    LabeledContent("Puissance nominale") {
+                    LabeledContent("Nominal Power") {
                         HStack(spacing: 4) {
                             TextField("1000", value: $connection.settings.expectedPower, format: .number)
                                 .multilineTextAlignment(.trailing)
@@ -55,7 +55,7 @@ struct DeviceSettingsView: View {
                             Text("W").foregroundStyle(.secondary)
                         }
                     }
-                    LabeledContent("Autonomie attendue") {
+                    LabeledContent("Expected Range") {
                         HStack(spacing: 4) {
                             TextField("65", value: $connection.settings.expectedRange, format: .number)
                                 .multilineTextAlignment(.trailing)
@@ -64,46 +64,46 @@ struct DeviceSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    NavigationLink("Personnaliser les cadrans") {
+                    NavigationLink("Customize Dials") {
                         DialsSettingsView(settings: $connection.settings)
                     }
                 } header: {
-                    Text("Trajet")
+                    Text("GPS")
                 } footer: {
-                    Text("L'autonomie attendue calibre le cadran d'autonomie : vous voyez ainsi si vous consommez plus ou moins que prévu.")
+                    Text("Expected Range calibrates the remaining range gauge in the GPS menu. This allows you to see if you are consuming more or less than expected.")
                 }
             }
 
             Section("Overview") {
-                NavigationLink("Personnaliser l'overview") {
+                NavigationLink("Customize Overview") {
                     OverviewSettingsView(settings: $connection.settings)
                 }
             }
 
             Section {
-                Picker("Mode Liontron", selection: $connection.settings.liontronMode) {
+                Picker("Liontron Mode", selection: $connection.settings.liontronMode) {
                     ForEach(LiontronMode.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }
             } header: {
-                Text("Sécurité")
+                Text("Security")
             } footer: {
-                Text("Certains packs Liontron refusent toute écriture tant que leur mot de passe matériel n'a pas été saisi. En mode auto, l'application désactive les boutons MOSFET dès qu'un refus est détecté.")
+                Text("If you use a Liontron battery, you can hardware lock it. In auto mode the app disables the MOSFET buttons as soon as the BMS rejects a write.")
             }
 
             Section {
-                Toggle("Limite de charge", isOn: $connection.settings.chargeLimitEnabled)
-                MillivoltField(title: "Tension cellule vide", value: $connection.settings.cellEmptyVoltage)
-                MillivoltField(title: "Tension cellule nominale", value: $connection.settings.cellNominalVoltage)
-                MillivoltField(title: "Tension cellule pleine", value: $connection.settings.cellFullVoltage)
+                Toggle("Charge Limit", isOn: $connection.settings.chargeLimitEnabled)
+                MillivoltField(title: "Cell empty voltage", value: $connection.settings.cellEmptyVoltage)
+                MillivoltField(title: "Cell nominal voltage", value: $connection.settings.cellNominalVoltage)
+                MillivoltField(title: "Cell full voltage", value: $connection.settings.cellFullVoltage)
             } header: {
                 Text("Charge")
             } footer: {
-                Text("Les tensions vide et pleine servent d'échelle aux barres de tension dans l'overview.")
+                Text("Charge Limit allows you to stop the charge at a certain chosen value. The function appears when the battery is charging. The empty and full voltages also scale the cell voltage bars in Overview.")
             }
         }
-        .navigationTitle("Réglages")
+        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -131,14 +131,14 @@ struct DialsSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Cadran de puissance", isOn: $settings.showPowerDial)
-                Toggle("Cadran de vitesse", isOn: $settings.showSpeedDial)
-                Toggle("Cadran d'autonomie", isOn: $settings.showRangeDial)
+                Toggle("Power dial", isOn: $settings.showPowerDial)
+                Toggle("Speed dial", isOn: $settings.showSpeedDial)
+                Toggle("Remaining Range dial", isOn: $settings.showRangeDial)
             } footer: {
-                Text("Une valeur dont le cadran est masqué reste visible dans la liste en dessous.")
+                Text("When a dial is disabled, the information is still visible in the list below the dials.")
             }
         }
-        .navigationTitle("Cadrans")
+        .navigationTitle("Dials")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -150,15 +150,14 @@ struct OverviewSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Toujours afficher la limite de charge",
-                       isOn: $settings.alwaysShowChargeLimit)
+                Toggle("Always show charge limit", isOn: $settings.alwaysShowChargeLimit)
                     .disabled(!settings.chargeLimitEnabled)
             } header: {
-                Text("Limite de charge")
+                Text("Charge Limit Settings")
             } footer: {
                 Text(settings.chargeLimitEnabled
-                     ? "Affiche la limite même lorsque la batterie n'est pas en charge."
-                     : "Activez d'abord la limite de charge dans les réglages de l'appareil.")
+                     ? "Show charging limit even when the battery is not charging."
+                     : "Enable Charge Limit in the device settings first.")
             }
         }
         .navigationTitle("Overview")

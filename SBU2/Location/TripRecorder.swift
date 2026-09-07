@@ -30,6 +30,9 @@ final class TripRecorder: NSObject {
     /// The latest pack reading, pushed in by the view so the recorder can convert
     /// speed into consumption without owning the Bluetooth connection.
     @ObservationIgnored private var reading = BasicInfo()
+    /// SBU averaged the last eight current readings before deriving power, so a
+    /// momentary spike does not swing the dial.
+    @ObservationIgnored private var recentCurrents: [Double] = []
 
     override init() {
         super.init()
@@ -53,6 +56,13 @@ final class TripRecorder: NSObject {
 
     func update(reading: BasicInfo) {
         self.reading = reading
+        recentCurrents.append(reading.current)
+        if recentCurrents.count > 8 { recentCurrents.removeFirst() }
+    }
+
+    private var averagedCurrent: Double {
+        guard !recentCurrents.isEmpty else { return reading.current }
+        return recentCurrents.reduce(0, +) / Double(recentCurrents.count)
     }
 
     /// Clears the trip counters without interrupting tracking.
@@ -67,6 +77,17 @@ final class TripRecorder: NSObject {
 
     var efficiencyUnit: String {
         Locale.current.measurementSystem == .metric ? "Wh/km" : "Wh/mi"
+    }
+
+    var currentSpeedText: String { currentSpeed.converted(to: speedUnit).formatted() }
+    var topSpeedText: String { topSpeed.converted(to: speedUnit).formatted() }
+    var powerText: String { power.formatted() }
+    var estimatedRangeText: String { estimatedRange.converted(to: distanceUnit).formatted() }
+    var distanceText: String { distance.converted(to: distanceUnit).formatted() }
+
+    /// SBU's formatter printed a dash instead of a zero here.
+    var efficiencyText: String {
+        efficiency > 0 ? efficiency.formatted(decimals: 1, unit: efficiencyUnit) : "-"
     }
 
     /// How far into the top speed seen so far the pack is running, for the speed dial.
@@ -108,7 +129,7 @@ extension TripRecorder: CLLocationManagerDelegate {
         if currentSpeed > topSpeed { topSpeed = currentSpeed }
 
         // Only discharge counts as consumption.
-        let watts = max(0, -reading.current) * reading.packVoltage
+        let watts = max(0, -averagedCurrent) * reading.packVoltage
         power = Measurement(value: watts, unit: .watts)
 
         let speedInDisplayUnit = currentSpeed.converted(to: Locale.current.preferredSpeedUnit).value

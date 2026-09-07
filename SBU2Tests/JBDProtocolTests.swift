@@ -22,26 +22,26 @@ private let cellVoltageFrame: [UInt8] = [
     0xFB, 0xED, 0x77,
 ]
 
-@Suite("Encodage des requêtes")
+@Suite("Request encoding")
 struct RequestTests {
 
-    @Test("Lecture des informations de base")
+    @Test("Reading basic information")
     func basicInfoRequest() {
         #expect(JBD.readRequest(.basicInfo) == [0xDD, 0xA5, 0x03, 0x00, 0xFF, 0xFD, 0x77])
     }
 
-    @Test("Lecture des tensions de cellule")
+    @Test("Reading cell voltages")
     func cellVoltageRequest() {
         #expect(JBD.readRequest(.cellVoltages) == [0xDD, 0xA5, 0x04, 0x00, 0xFF, 0xFC, 0x77])
     }
 
-    @Test("Ouverture et fermeture du mode usine")
+    @Test("Opening and closing factory mode")
     func factoryMode() {
         #expect(JBD.openFactoryMode == [0xDD, 0x5A, 0x00, 0x02, 0x56, 0x78, 0xFF, 0x30, 0x77])
         #expect(JBD.closeFactoryMode == [0xDD, 0x5A, 0x01, 0x02, 0x00, 0x00, 0xFF, 0xFD, 0x77])
     }
 
-    @Test("Commande MOSFET : bit 0 coupe la charge, bit 1 la décharge")
+    @Test("MOSFET command: bit 0 disables charging, bit 1 disables discharging")
     func mosControl() {
         #expect(JBD.mosControl(charge: true, discharge: true)
                 == [0xDD, 0x5A, 0xE1, 0x02, 0x00, 0x00, 0xFF, 0x1D, 0x77])
@@ -54,16 +54,16 @@ struct RequestTests {
     }
 }
 
-@Suite("Mot de passe matériel")
+@Suite("Hardware password")
 struct PasswordTests {
 
-    @Test("Saisie du mot de passe : chaque chiffre est envoyé en valeur numérique")
+    @Test("Entering the password sends each digit as its numeric value")
     func enterPassword() {
         #expect(JBD.enterPassword("333333")
                 == [0xDD, 0x5A, 0x06, 0x07, 0x06, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xDB, 0x77])
     }
 
-    @Test("Changement de mot de passe")
+    @Test("Changing the password")
     func changePassword() {
         #expect(JBD.changePassword(from: "555555", to: "666666")
                 == [0xDD, 0x5A, 0x07, 0x0D, 0x0C,
@@ -72,7 +72,7 @@ struct PasswordTests {
                     0xFF, 0x9E, 0x77])
     }
 
-    @Test("Création d'un mot de passe sur un pack qui n'en a pas")
+    @Test("Creating a password on a pack that has none")
     func createPassword() {
         #expect(JBD.createPassword("444444")
                 == [0xDD, 0x5A, 0x07, 0x0D, 0x0C,
@@ -81,19 +81,19 @@ struct PasswordTests {
                     0xFA, 0xEA, 0x77])
     }
 
-    @Test("Suppression du mot de passe")
+    @Test("Clearing the password")
     func clearPassword() {
         #expect(JBD.clearPassword
                 == [0xDD, 0x5A, 0x09, 0x07, 0x06, 0x4A, 0x31, 0x42, 0x32, 0x44, 0x34, 0xFE, 0x83, 0x77])
     }
 
-    @Test("Chaque chiffre devient sa valeur numérique, pas son code ASCII")
+    @Test("Each digit becomes its numeric value, not its ASCII code")
     func digitsAreNumericValues() throws {
         let frame = try #require(JBD.enterPassword("102938"))
         #expect(Array(frame[4...10]) == [0x06, 1, 0, 2, 9, 3, 8])
     }
 
-    @Test("Un mot de passe mal formé est refusé avant l'envoi",
+    @Test("A malformed password is refused before sending",
           arguments: ["12345", "1234567", "12345a", "", "  1234"])
     func rejectsMalformed(_ password: String) {
         #expect(!JBD.isValidPassword(password))
@@ -101,10 +101,10 @@ struct PasswordTests {
     }
 }
 
-@Suite("Résumé des cellules")
+@Suite("Cell summary")
 struct CellSummaryTests {
 
-    @Test("Extrêmes et écart")
+    @Test("Extremes and delta")
     func extremes() throws {
         let summary = try #require(CellSummary(voltages: [3.320, 3.315, 3.318, 3.322]))
         #expect(summary.lowestIndex == 1)
@@ -112,23 +112,23 @@ struct CellSummaryTests {
         #expect(abs(summary.deltaMillivolts - 7) < 0.001)
     }
 
-    @Test("Les cellules absentes sont ignorées")
+    @Test("Unpopulated cells are ignored")
     func ignoresUnpopulatedCells() throws {
         let summary = try #require(CellSummary(voltages: [3.320, 3.310, 0, 0]))
         #expect(summary.lowestIndex == 1)
         #expect(summary.highestIndex == 0)
     }
 
-    @Test("Aucun résumé quand aucune cellule n'est active")
+    @Test("No summary when no cell is live")
     func noLiveCells() {
         #expect(CellSummary(voltages: [0, 0]) == nil)
     }
 }
 
-@Suite("Décodage des réponses")
+@Suite("Response decoding")
 struct ResponseTests {
 
-    @Test("Trame valide")
+    @Test("A valid frame")
     func validFrame() throws {
         let response = try JBD.decode(basicInfoFrame)
         #expect(response.register == 0x03)
@@ -136,21 +136,21 @@ struct ResponseTests {
         #expect(response.payload.count == 27)
     }
 
-    @Test("Checksum invalide")
+    @Test("A corrupted checksum")
     func corruptedChecksum() {
         var frame = basicInfoFrame
         frame[frame.count - 2] &+= 1
         #expect(throws: JBD.DecodingError.badChecksum) { try JBD.decode(frame) }
     }
 
-    @Test("Longueur incohérente")
+    @Test("A length that does not match")
     func lengthMismatch() {
         var frame = basicInfoFrame
         frame[3] = 0x0A
         #expect(throws: JBD.DecodingError.lengthMismatch) { try JBD.decode(frame) }
     }
 
-    @Test("Trame d'erreur : le checksum nul du firmware n'est pas rejeté")
+    @Test("Error frame: the firmware's zeroed checksum is not rejected")
     func errorFrame() throws {
         let response = try JBD.decode([0xDD, 0x00, 0x81, 0x00, 0x00, 0x00, 0x77])
         #expect(!response.isOK)
@@ -158,10 +158,10 @@ struct ResponseTests {
     }
 }
 
-@Suite("Réassemblage des notifications BLE")
+@Suite("BLE notification reassembly")
 struct FrameAssemblerTests {
 
-    @Test("Une trame découpée en paquets de 20 octets")
+    @Test("A frame split into 20-byte packets")
     func splitFrame() {
         var assembler = FrameAssembler()
         #expect(assembler.append(Data(basicInfoFrame.prefix(20))).isEmpty)
@@ -169,21 +169,21 @@ struct FrameAssemblerTests {
         #expect(frames == [basicInfoFrame])
     }
 
-    @Test("Deux trames dans une seule notification")
+    @Test("Two frames in one notification")
     func coalescedFrames() {
         var assembler = FrameAssembler()
         let frames = assembler.append(Data(basicInfoFrame + cellVoltageFrame))
         #expect(frames == [basicInfoFrame, cellVoltageFrame])
     }
 
-    @Test("Les octets parasites avant l'octet de départ sont ignorés")
+    @Test("Noise before the start byte is skipped")
     func resynchronisation() {
         var assembler = FrameAssembler()
         let frames = assembler.append(Data([0x11, 0x22] + cellVoltageFrame))
         #expect(frames == [cellVoltageFrame])
     }
 
-    @Test("reset() vide le tampon")
+    @Test("reset() empties the buffer")
     func resetClearsBuffer() {
         var assembler = FrameAssembler()
         _ = assembler.append(Data(basicInfoFrame.prefix(10)))
@@ -192,7 +192,7 @@ struct FrameAssemblerTests {
     }
 }
 
-@Suite("Décodage des mesures")
+@Suite("Reading decoding")
 struct BasicInfoTests {
 
     private func decoded() throws -> BasicInfo {
@@ -200,7 +200,7 @@ struct BasicInfoTests {
         return try #require(BasicInfo.decode(payload: payload))
     }
 
-    @Test("Grandeurs électriques")
+    @Test("Electrical values")
     func electricalValues() throws {
         let info = try decoded()
         #expect(info.packVoltage == 13.25)
@@ -211,14 +211,14 @@ struct BasicInfoTests {
         #expect(abs(info.power - (-66.25)) < 0.001)
     }
 
-    @Test("Autonomie restante en décharge")
+    @Test("Remaining time while discharging")
     func remainingTime() throws {
         let info = try decoded()
         let hours = try #require(info.remainingHours)
         #expect(abs(hours - 9.12) < 0.001)
     }
 
-    @Test("Configuration et état du pack")
+    @Test("Pack configuration and state")
     func packState() throws {
         let info = try decoded()
         #expect(info.cellCount == 4)
@@ -230,7 +230,7 @@ struct BasicInfoTests {
         #expect(info.balancingCells == [1])
     }
 
-    @Test("Températures converties en degrés Celsius")
+    @Test("Temperatures converted to Celsius")
     func temperatures() throws {
         let info = try decoded()
         #expect(info.temperatures.count == 2)
@@ -238,7 +238,7 @@ struct BasicInfoTests {
         #expect(abs(info.temperatures[1] - 22.05) < 0.001)
     }
 
-    @Test("Date de fabrication")
+    @Test("Production date")
     func productionDate() throws {
         let info = try decoded()
         let date = try #require(info.productionDate)
@@ -248,26 +248,26 @@ struct BasicInfoTests {
         #expect(components.day == 28)
     }
 
-    @Test("Les drapeaux de protection sont décodés bit à bit")
+    @Test("Protection flags are decoded bit by bit")
     func protectionFlags() throws {
         var payload = try JBD.decode(basicInfoFrame).payload
-        // bit 2 = surtension pack, bit 10 = court-circuit
+        // bit 2 = pack overvoltage, bit 10 = short circuit
         payload[16] = 0b0000_0100
         payload[17] = 0b0000_0100
         let info = try #require(BasicInfo.decode(payload: payload))
         #expect(info.protections == [.packOverVoltage, .shortCircuit])
     }
 
-    @Test("Payload trop court")
+    @Test("A payload that is too short")
     func truncatedPayload() {
         #expect(BasicInfo.decode(payload: [0x05, 0x2D]) == nil)
     }
 }
 
-@Suite("Tensions de cellule")
+@Suite("Cell voltages")
 struct CellVoltageTests {
 
-    @Test("Conversion en volts")
+    @Test("Conversion to volts")
     func decoding() throws {
         let payload = try JBD.decode(cellVoltageFrame).payload
         let voltages = CellVoltages.decode(payload: payload)

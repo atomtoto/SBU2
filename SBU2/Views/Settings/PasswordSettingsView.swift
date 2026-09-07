@@ -18,9 +18,9 @@ struct PasswordSettingsView: View {
 
         Form {
             Section {
-                Toggle("Ce BMS a un mot de passe", isOn: $connection.settings.hasPassword)
+                Toggle("Has password", isOn: $connection.settings.hasPassword)
                 if connection.settings.hasPassword {
-                    LabeledContent("Mot de passe") {
+                    LabeledContent("Password") {
                         TextField("000000", text: $connection.settings.password)
                             .multilineTextAlignment(.trailing)
                             .keyboardType(.numberPad)
@@ -28,22 +28,22 @@ struct PasswordSettingsView: View {
                     }
                 }
             } header: {
-                Text("Mot de passe actuel")
+                Text("Current password")
             } footer: {
                 Text(currentValid
-                     ? "Il est réenvoyé automatiquement avant chaque écriture."
-                     : "Le mot de passe doit comporter exactement 6 chiffres.")
+                     ? "It is sent again automatically before every write."
+                     : "Configuration invalid. Passwords need to have 6 digits.")
                     .foregroundStyle(currentValid ? Color.secondary : Color.red)
             }
 
             Section {
-                LabeledContent("Nouveau mot de passe") {
+                LabeledContent("New Password") {
                     TextField("000000", text: $newPassword)
                         .multilineTextAlignment(.trailing)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
                 }
-                Button(connection.settings.hasPassword ? "Modifier le mot de passe" : "Créer un mot de passe") {
+                Button(connection.settings.hasPassword ? "Update Password" : "Create Password") {
                     if connection.settings.hasPassword {
                         connection.changePassword(to: newPassword)
                     } else {
@@ -53,20 +53,20 @@ struct PasswordSettingsView: View {
                 }
                 .disabled(!canSubmit)
 
-                Button("Supprimer le mot de passe", role: .destructive) {
+                Button("Remove password", role: .destructive) {
                     connection.removePassword()
                 }
                 .disabled(!connection.settings.hasPassword || !currentValid)
             } header: {
-                Text("Changer le mot de passe")
+                Text("Change Password")
             } footer: {
-                Text("Ces commandes sont écrites dans le BMS. Notez le mot de passe : il n'existe aucun moyen de le récupérer depuis l'application.")
+                Text("These commands are written to the BMS. Write the password down: there is no way to recover it from the app.")
             }
 
             switch connection.passwordOutcome {
             case .succeeded:
                 Section {
-                    Label("Le BMS a accepté la commande.", systemImage: "checkmark.circle.fill")
+                    Label("The BMS accepted the command.", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 }
             case .rejected(let message):
@@ -78,7 +78,7 @@ struct PasswordSettingsView: View {
                 EmptyView()
             }
         }
-        .navigationTitle("Mot de passe")
+        .navigationTitle("Password")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { normalisePassword(&connection.settings) }
     }

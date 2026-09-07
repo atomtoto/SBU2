@@ -3,7 +3,7 @@
 //  SBU2
 //
 
-import Foundation
+import SwiftUI
 
 /// One of the thirteen protection flags reported in the basic-information frame.
 enum Protection: Int, CaseIterable, Identifiable {
@@ -23,26 +23,42 @@ enum Protection: Int, CaseIterable, Identifiable {
 
     var id: Int { rawValue }
 
+    /// The wording SBU used in its overview.
     var label: String {
         switch self {
-        case .cellOverVoltage: "Surtension cellule"
-        case .cellUnderVoltage: "Sous-tension cellule"
-        case .packOverVoltage: "Surtension pack"
-        case .packUnderVoltage: "Sous-tension pack"
-        case .chargeOverTemperature: "Température haute (charge)"
-        case .chargeUnderTemperature: "Température basse (charge)"
-        case .dischargeOverTemperature: "Température haute (décharge)"
-        case .dischargeUnderTemperature: "Température basse (décharge)"
-        case .chargeOverCurrent: "Surintensité de charge"
-        case .dischargeOverCurrent: "Surintensité de décharge"
-        case .shortCircuit: "Court-circuit"
-        case .frontEndError: "Erreur circuit de mesure"
-        case .mosLockedIn: "MOSFET verrouillés"
+        case .cellOverVoltage: "Cell overvoltage"
+        case .cellUnderVoltage: "Cell undervoltage"
+        case .packOverVoltage: "Battery overvoltage"
+        case .packUnderVoltage: "Battery undervoltage"
+        case .chargeOverTemperature: "Temperature above charging limit"
+        case .chargeUnderTemperature: "Temperature below charging limit"
+        case .dischargeOverTemperature: "Temperature above discharging limit"
+        case .dischargeUnderTemperature: "Temperature below discharging limit"
+        case .chargeOverCurrent: "Charging overcurrent"
+        case .dischargeOverCurrent: "Discharging overcurrent"
+        case .shortCircuit: "Short circuit detected"
+        case .frontEndError: "BMS error detected"
+        case .mosLockedIn: "MOS locked"
         }
     }
 
-    /// `.mosLockedIn` is a state, not a fault — everything else is a real alarm.
-    var isCritical: Bool { self != .mosLockedIn }
+    /// SBU drew a yellow triangle for most faults, a red octagon for the two that
+    /// mean the pack cut out, and a blue info circle for the MOS lock.
+    var symbol: String {
+        switch self {
+        case .shortCircuit, .frontEndError: "exclamationmark.octagon.fill"
+        case .mosLockedIn: "info.circle"
+        default: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .shortCircuit, .frontEndError: .red
+        case .mosLockedIn: .blue
+        default: .yellow
+        }
+    }
 }
 
 /// The values decoded from register `0x03`.

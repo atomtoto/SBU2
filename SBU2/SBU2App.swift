@@ -8,6 +8,9 @@ import UIKit
 
 @main
 struct SBU2App: App {
+    /// Only there to answer the orientation question: portrait everywhere but GPS.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     @State private var connection = BMSConnection()
     @State private var appSettings = AppSettings()
 

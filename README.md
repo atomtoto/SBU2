@@ -55,8 +55,10 @@ changements qui ne touchent pas au code.
 | `SBU2/Model/FrameAssembler.swift` | Recomposition des trames à partir des notifications BLE. |
 | `SBU2/Model/BMSReading.swift` | Décodage des registres `0x03` et `0x04`. |
 | `SBU2/Bluetooth/BMSConnection.swift` | Scan, connexion, interrogation périodique, écritures. |
-| `SBU2/Views/ScanView.swift` | Liste des appareils détectés. |
-| `SBU2/Views/MonitorView.swift` | Tableau de bord du pack connecté. |
+| `SBU2/Views/DeviceListView.swift` | Liste des appareils détectés. |
+| `SBU2/Views/Overview/` | Tableau de bord du pack, repris à l'identique de SBU. |
+| `SBU2/Views/GPS/` | Cadrans et relevés de trajet, repris à l'identique de SBU. |
+| `SBU2/Views/Settings/` | Réglages appareil et application. |
 | `SBU2Tests/` | Tests du protocole et du décodage (Swift Testing). |
 
 ## Protocole JBD en deux mots
@@ -83,7 +85,11 @@ Registres utilisés :
 
 ## Limites connues
 
-- Les BMS protégés par un mot de passe refusent les écritures : la saisie du
-  mot de passe n'est pas implémentée.
 - La lecture et l'écriture de la configuration complète (seuils de protection,
   capacités, paramètres d'équilibrage) ne sont pas reprises.
+- L'enregistrement des mesures et les graphiques (onglet Logging de SBU) ne sont
+  pas repris.
+- La limite de charge est réglable mais n'agit sur rien, exactement comme dans
+  SBU : aucun code ne lit `chargeLimitSOC` en dehors de l'interface.
+- L'interface est en anglais, comme l'application d'origine. Une localisation
+  française viendra plus tard.
