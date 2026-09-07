@@ -29,7 +29,9 @@ struct JBDAdapterTests {
     func pollCommands() {
         let commands = JBDAdapter().pollCommands()
         #expect(commands.count == 2)
-        #expect(commands.allSatisfy(\.isPoll))
+        // `map` and not `allSatisfy`: the macro lifts its sub-expressions into
+        // closures, and a rethrowing call inside one is treated as throwing.
+        #expect(commands.map(\.isPoll) == [true, true])
         #expect(commands[0].bytes == JBD.readRequest(.basicInfo))
         #expect(commands[0].expectedRegister == JBD.Register.basicInfo.rawValue)
         #expect(commands[1].bytes == JBD.readRequest(.cellVoltages))
