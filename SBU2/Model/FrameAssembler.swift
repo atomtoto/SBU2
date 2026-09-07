@@ -39,6 +39,7 @@ struct FrameAssembler {
     /// When the buffer last went from complete to holding a partial frame.
     private var partialSince: Date?
 
+    /// Defaults to JBD's framing, which is what every existing caller wants.
     init(layout: Layout = JBD.frameLayout) {
         self.layout = layout
     }
