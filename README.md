@@ -23,7 +23,7 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 ## Prérequis
 
 - Xcode 16 ou ultérieur.
-- iOS 17 minimum.
+- iOS 26 minimum.
 - Un iPhone ou iPad **réel** : le simulateur n'expose pas de Bluetooth LE.
 
 ## Compilation
