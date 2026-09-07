@@ -280,8 +280,7 @@ private struct MOSButton: View {
             action()
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(color)
+                background
                     // 44pt is Apple's minimum comfortable tap target; SBU's 35 was under it.
                     .frame(width: 152, height: 44)
                 HStack {
@@ -297,7 +296,6 @@ private struct MOSButton: View {
                                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
                         } else {
                             Image(systemName: symbol)
-                                .font(.system(size: 20, weight: .semibold))
                                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
                         }
                     }
@@ -314,6 +312,18 @@ private struct MOSButton: View {
         .animation(.easeInOut(duration: 0.2), value: isBusy)
         .accessibilityLabel(title)
         .accessibilityValue(isWaiting ? "Waiting for the BMS" : "")
+    }
+
+    /// Liquid Glass on iOS 26, tinted by the same colour the flat fallback uses, so
+    /// the on/off/gray/blue meaning survives either way.
+    @ViewBuilder
+    private var background: some View {
+        let shape = RoundedRectangle(cornerRadius: 22)
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular.tint(color), in: shape)
+        } else {
+            shape.fill(color)
+        }
     }
 }
 
