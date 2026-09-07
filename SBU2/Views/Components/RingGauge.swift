@@ -11,37 +11,40 @@ struct RingGauge<Label: View>: View {
     var fraction: Double
     var tint: Color
     var lineWidth: CGFloat = 12
-    /// Puts a Liquid Glass disc behind the ring on iOS 26. Off by default: the trip
-    /// dials sit three to a row and keep the flat look SBU had.
-    var glassBackground: Bool = false
+    /// Renders the progress arc itself — not the grey track, not a backing disc —
+    /// as tinted Liquid Glass on iOS 26. Off by default: the three trip dials sit
+    /// side by side and keep the flat look SBU had.
+    var glassArc: Bool = false
     @ViewBuilder var label: Label
+
+    private var clampedFraction: Double { max(0, min(fraction, 1)) }
+
+    /// The stroked, rotated arc as geometry rather than a coloured View: reused to
+    /// draw the plain arc and, on iOS 26, as the exact mask the glass material is
+    /// clipped to, so the glass follows the arc and not its bounding circle.
+    private var arcOutline: some Shape {
+        Circle()
+            .trim(from: 0, to: clampedFraction)
+            .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+            .rotation(.degrees(-90))
+    }
 
     var body: some View {
         ZStack {
-            if glassBackground {
-                GlassDisc()
-            }
             Circle()
                 .stroke(.gray.opacity(0.3), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: max(0, min(fraction, 1)))
-                .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
-                .rotationEffect(.init(degrees: -90))
-                .foregroundColor(tint)
+            arc
             label
         }
         .animation(.easeInOut(duration: 0.4), value: fraction)
     }
-}
 
-/// A Liquid Glass disc, inscribed in the frame so it lines up with the ring.
-///
-/// Nothing is drawn below iOS 26, where the effect does not exist.
-private struct GlassDisc: View {
     @ViewBuilder
-    var body: some View {
-        if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(.regular, in: .circle)
+    private var arc: some View {
+        if glassArc, #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular.tint(tint), in: arcOutline)
+        } else {
+            arcOutline.foregroundColor(tint)
         }
     }
 }

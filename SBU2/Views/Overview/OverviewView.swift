@@ -30,7 +30,13 @@ struct OverviewView: View {
                           settings: connection.settings,
                           enabled: connection.canControlMOS,
                           mosWrite: connection.mosWrite) { change in
-                    confirmation = change
+                    if appSettings.showMOSFETWarning {
+                        confirmation = change
+                    } else {
+                        connection.setMOS(terminal: change.terminal,
+                                          charge: change.charge,
+                                          discharge: change.discharge)
+                    }
                 }
                 if showChargeBox {
                     ChargeBox(settings: $connection.settings)
@@ -66,16 +72,23 @@ struct OverviewView: View {
             if let change = confirmation {
                 Button(change.confirmTitle,
                        role: change.isDisabling ? ButtonRole.destructive : nil) {
-                    connection.setMOS(terminal: change.terminal,
-                                      charge: change.charge,
-                                      discharge: change.discharge)
-                    confirmation = nil
+                    perform(change)
+                }
+                Button("\(change.confirmTitle), Don't Warn Me Again",
+                       role: change.isDisabling ? ButtonRole.destructive : nil) {
+                    appSettings.showMOSFETWarning = false
+                    perform(change)
                 }
             }
             Button("Cancel", role: .cancel) { confirmation = nil }
         } message: {
-            Text("This command is written to the BMS and really cuts the current on that terminal.")
+            Text("This command is written to the BMS and really cuts the current on that terminal. You can turn this warning off in Settings.")
         }
+    }
+
+    private func perform(_ change: MOSChange) {
+        connection.setMOS(terminal: change.terminal, charge: change.charge, discharge: change.discharge)
+        confirmation = nil
     }
 
     /// SBU showed the charge box whenever current was flowing in, or when the user
@@ -149,7 +162,7 @@ private struct DetailBox: View {
             HStack(alignment: .center, spacing: 20) {
                 RingGauge(fraction: Double(info.stateOfCharge) / 100,
                           tint: .stateOfChargeOverview(info.stateOfCharge),
-                          glassBackground: true) {
+                          glassArc: true) {
                     Text(info.stateOfChargeText)
                         .font(.system(size: 24, weight: .bold))
                 }
@@ -274,21 +287,21 @@ private struct MOSButton: View {
                 HStack {
                     Text(title)
                         .font(.system(size: 17))
-                    // A fixed slot, so swapping the bolt for the spinner does not
-                    // shift the label.
+                    // A fixed slot sized to the bolt glyph, so swapping it for the
+                    // spinner neither shifts the label nor changes apparent size.
                     ZStack {
                         if isWaiting {
                             ProgressView()
                                 .progressViewStyle(.circular)
-                                .controlSize(.small)
                                 .tint(.white)
                                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
                         } else {
                             Image(systemName: symbol)
+                                .font(.system(size: 20, weight: .semibold))
                                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
                         }
                     }
-                    .frame(width: 20, height: 20)
+                    .frame(width: 24, height: 24)
                 }
                 .foregroundColor(.white)
             }

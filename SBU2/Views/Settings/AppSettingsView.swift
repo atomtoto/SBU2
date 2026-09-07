@@ -42,6 +42,14 @@ struct AppSettingsView: View {
                 Text("Keeps the screen awake while the app is in the foreground.")
             }
 
+            Section {
+                Toggle("Confirm before switching MOSFETs", isOn: $settings.showMOSFETWarning)
+            } header: {
+                Text("Safety")
+            } footer: {
+                Text("Shows a warning before every charge or discharge command. Turning this off applies the command as soon as you tap the button.")
+            }
+
             Section("Theme") {
                 Picker("Select Theme", selection: $settings.appearance) {
                     ForEach(Appearance.allCases) { appearance in

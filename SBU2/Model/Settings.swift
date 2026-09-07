@@ -49,12 +49,16 @@ final class AppSettings {
     var capacityUnit: CapacityUnit = .ampereHours
     var keepScreenAwake = false
     var appearance: Appearance = .system
+    /// Whether tapping a MOSFET button asks for confirmation first. Off once the
+    /// user dismisses the warning with "Don't warn me again".
+    var showMOSFETWarning = true
 
     struct Snapshot: Codable, Equatable {
         var showDemoDevice = true
         var capacityUnit: CapacityUnit = .ampereHours
         var keepScreenAwake = false
         var appearance: Appearance = .system
+        var showMOSFETWarning = true
     }
 
     /// Equatable view of the settings, so a single `onChange` can drive persistence.
@@ -62,7 +66,8 @@ final class AppSettings {
         Snapshot(showDemoDevice: showDemoDevice,
                  capacityUnit: capacityUnit,
                  keepScreenAwake: keepScreenAwake,
-                 appearance: appearance)
+                 appearance: appearance,
+                 showMOSFETWarning: showMOSFETWarning)
     }
 
     init() {
@@ -72,6 +77,7 @@ final class AppSettings {
         capacityUnit = stored.capacityUnit
         keepScreenAwake = stored.keepScreenAwake
         appearance = stored.appearance
+        showMOSFETWarning = stored.showMOSFETWarning
     }
 
     func persist() {
