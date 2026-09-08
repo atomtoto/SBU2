@@ -112,9 +112,15 @@ private struct DialsView: View {
     let recorder: TripRecorder
     let onEdit: () -> Void
 
-    private var anyDial: Bool {
-        settings.showPowerDial || settings.showSpeedDial || settings.showRangeDial
+    private var enabledDialCount: Int {
+        [settings.showPowerDial, settings.showSpeedDial, settings.showRangeDial].filter { $0 }.count
     }
+
+    private var anyDial: Bool { enabledDialCount > 0 }
+
+    /// A single dial has the whole row to itself, so it can afford to be a lot
+    /// easier to read at a glance than the size two or three of them have to share.
+    private var isSingleDial: Bool { enabledDialCount == 1 }
 
     /// SBU drew the range arc at half scale, so a ratio of 1 fills only half the
     /// ring. Kept as it was, otherwise the dial would read differently from before.
@@ -133,14 +139,16 @@ private struct DialsView: View {
                         Dial(fraction: abs(info.power) / max(Double(settings.expectedPower), 1),
                              tint: info.current >= 0 ? .purple : .blue,
                              value: info.powerText,
-                             caption: "Power")
+                             caption: "Power",
+                             large: isSingleDial)
                         Spacer()
                     }
                     if settings.showSpeedDial {
                         Dial(fraction: recorder.speedFraction,
                              tint: .green,
                              value: recorder.currentSpeedText,
-                             caption: "Speed")
+                             caption: "Speed",
+                             large: isSingleDial)
                         Spacer()
                     }
                     if settings.showRangeDial {
@@ -148,7 +156,8 @@ private struct DialsView: View {
                              tint: rangeTint,
                              value: recorder.estimatedRangeText,
                              caption: "Remaining",
-                             captionSize: 15)
+                             captionScale: 15.0 / 17.0,
+                             large: isSingleDial)
                         Spacer()
                     }
                 }
@@ -196,25 +205,38 @@ private struct Dial: View {
     let tint: Color
     let value: String
     let caption: String
-    var captionSize: CGFloat = 17
+    /// Multiplies the caption's font size — "Remaining" needs to run smaller than
+    /// "Power" or "Speed" to fit under the same width.
+    var captionScale: CGFloat = 1
+    /// The one dial showing, with the row to itself.
+    var large: Bool = false
+
+    private var minDiameter: CGFloat { large ? 175 : 115 }
+    private var maxDiameter: CGFloat { large ? 210 : 140 }
+    private var height: CGFloat { large ? 186 : 124 }
+    private var lineWidth: CGFloat { large ? 18 : 12 }
+    private var valueFontSize: CGFloat { large ? 36 : 23 }
+    private var captionFontSize: CGFloat { (large ? 26 : 17) * captionScale }
+    private var labelInset: CGFloat { large ? 26 : 18 }
+    private var outerPadding: CGFloat { large ? 12 : 8 }
 
     var body: some View {
-        RingGauge(fraction: fraction, tint: tint) {
+        RingGauge(fraction: fraction, tint: tint, lineWidth: lineWidth) {
             VStack {
                 Text(value)
-                    .font(.system(size: 23, weight: .regular))
+                    .font(.system(size: valueFontSize, weight: .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                 Text(caption)
-                    .font(.system(size: captionSize, weight: .bold))
+                    .font(.system(size: captionFontSize, weight: .bold))
                     .multilineTextAlignment(.center)
                     .opacity(0.65)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, labelInset)
         }
-        .frame(minWidth: 115, maxWidth: 140)
-        .frame(height: 124)
-        .padding(8)
+        .frame(minWidth: minDiameter, maxWidth: maxDiameter)
+        .frame(height: height)
+        .padding(outerPadding)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(caption): \(value)")
     }
