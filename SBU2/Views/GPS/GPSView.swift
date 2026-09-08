@@ -11,6 +11,15 @@ struct GPSView: View {
     @Environment(BMSConnection.self) private var connection
     @State private var recorder = TripRecorder()
     @State private var showingDialSettings = false
+    @State private var orientation = InterfaceOrientationObserver()
+
+    /// The rotate hint only earns its place once all three dials are competing for
+    /// the same row — with one or two, portrait already has the room.
+    private var allDialsShown: Bool {
+        connection.settings.showPowerDial
+            && connection.settings.showSpeedDial
+            && connection.settings.showRangeDial
+    }
 
     var body: some View {
         @Bindable var connection = connection
@@ -24,6 +33,11 @@ struct GPSView: View {
                 }
                 .padding(.top, 15)
 
+                if allDialsShown && orientation.isPortrait {
+                    HintBanner(symbol: "iphone.landscape",
+                               message: "Rotate your phone: three dials fit better in landscape.")
+                }
+
                 GPSListView(settings: connection.settings,
                             info: connection.info,
                             recorder: recorder)
@@ -31,16 +45,8 @@ struct GPSView: View {
                     .padding(.bottom, 20)
 
                 if recorder.authorizationDenied {
-                    HStack {
-                        Image(systemName: "location.slash")
-                        Text("Location access is off. Enable it in Settings to measure speed, distance and range.")
-                            .font(.footnote)
-                    }
-                    .padding(.horizontal)
-                    .background {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    }
+                    HintBanner(symbol: "location.slash",
+                               message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
                 }
             }
 
@@ -56,11 +62,13 @@ struct GPSView: View {
         .padding(.horizontal, 3)
         .onAppear {
             OrientationLock.shared.allowAllOrientations()
+            orientation.start()
             recorder.update(reading: connection.info)
             recorder.start()
         }
         .onDisappear {
             OrientationLock.shared.lockToPortrait()
+            orientation.stop()
             recorder.stop()
         }
         .onChange(of: connection.info) { _, reading in
@@ -72,6 +80,26 @@ struct GPSView: View {
             }
             .presentationDetents([.fraction(0.4)])
             .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+/// A one-line notice, icon plus footnote, on the same frosted pill used for both
+/// the location-access warning and the rotate-to-landscape hint below.
+private struct HintBanner: View {
+    let symbol: String
+    let message: String
+
+    var body: some View {
+        HStack {
+            Image(systemName: symbol)
+            Text(message)
+                .font(.footnote)
+        }
+        .padding(.horizontal)
+        .background {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(.ultraThinMaterial)
         }
     }
 }
