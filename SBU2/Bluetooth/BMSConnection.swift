@@ -80,6 +80,10 @@ final class BMSConnection: NSObject {
     private static let stallTimeout: TimeInterval = 5.0
     /// Still nothing after that: the dongle is wedged and only a new link revives it.
     private static let relinkTimeout: TimeInterval = 12.0
+    /// How long a one-shot write waits for its answer before it is called a failure.
+    /// Longer than `responseTimeout`, which only decides when the *next* command may
+    /// go out: a bracket has several of those to get through first.
+    private static let writeTimeout: TimeInterval = 10.0
 
     // MARK: Observable state
 
@@ -92,6 +96,12 @@ final class BMSConnection: NSObject {
     /// Tracks the MOSFET command currently waiting for the pack to confirm it.
     private(set) var mosWrite = MOSWriteTracker()
     private(set) var passwordOutcome: WriteOutcome = .idle
+    /// What the BMS said about the last alert reset, and whether one is still on its
+    /// way. The command is fire-and-forget as far as the readings go — nothing polled
+    /// reports the stored fault records — so the answer to the write itself is the
+    /// only confirmation there is.
+    private(set) var clearAlertsOutcome: WriteOutcome = .idle
+    private(set) var isClearingAlerts = false
     /// The family the open device speaks.
     private(set) var protocolID: BMSProtocolID = .jbd
 
@@ -129,6 +139,10 @@ final class BMSConnection: NSObject {
     @ObservationIgnored private var outbox: [BMSCommand] = []
     /// The command whose answer the transport is waiting for.
     @ObservationIgnored private var inFlight: BMSCommand?
+    /// The alert-clearing write whose answer decides `clearAlertsOutcome`, and when
+    /// it went out.
+    @ObservationIgnored private var pendingClearAlerts: BMSCommand?
+    @ObservationIgnored private var clearAlertsSentAt: Date?
     @ObservationIgnored private var inFlightSince: Date?
     /// When the pack last sent anything at all, complete frame or not. Used both to
     /// avoid interrupting an answer in progress and to notice a dead conversation.
@@ -186,6 +200,7 @@ final class BMSConnection: NSObject {
         central.stopScan()
         lastError = nil
         passwordOutcome = .idle
+        finishClearingAlerts(.idle)
         openDeviceID = device.id
         settings = DeviceSettingsStore.load(device.id)
 
@@ -240,6 +255,9 @@ final class BMSConnection: NSObject {
         cellVoltages = []
         lastUpdate = nil
         mosWrite.cancel()
+        if isClearingAlerts {
+            finishClearingAlerts(.rejected("The link dropped before the BMS answered."))
+        }
         writeCharacteristic = nil
         notifying = false
     }
@@ -294,6 +312,7 @@ final class BMSConnection: NSObject {
         if mosWrite.expire() {
             lastError = "The BMS did not confirm the command within \(Int(MOSWriteTracker.timeout)) seconds."
         }
+        expireClearAlerts()
 
         guard demo == nil else {
             stepDemo()
@@ -392,10 +411,12 @@ final class BMSConnection: NSObject {
     }
 
     /// The pack answered the command holding the line, so the next one may go out.
-    private func retireInFlight(answering register: UInt8) {
-        guard let expected = inFlight?.expectedRegister, expected == register else { return }
+    /// Returns that command, or `nil` when the answer belongs to something else.
+    private func retireInFlight(answering register: UInt8) -> BMSCommand? {
+        guard let command = inFlight, command.expectedRegister == register else { return nil }
         inFlight = nil
         inFlightSince = nil
+        return command
     }
 
     // MARK: - Writes
@@ -434,6 +455,60 @@ final class BMSConnection: NSObject {
         settings.hasPassword ? settings.password : nil
     }
 
+    // MARK: - Stored alerts
+
+    var canClearAlerts: Bool {
+        status.isConnected && adapter.supportsClearingAlerts
+    }
+
+    /// Wipes the fault records the pack has stored.
+    ///
+    /// This does not touch the protections the pack is reporting *right now*: those
+    /// come from the readings and re-appear on the next poll for as long as whatever
+    /// tripped them is still true.
+    func clearAlerts() {
+        guard canClearAlerts, !isClearingAlerts else { return }
+
+        let commands = adapter.clearAlertsCommands(password: replayPassword)
+        guard let last = commands.last else { return }
+
+        lastError = nil
+        clearAlertsOutcome = .idle
+        isClearingAlerts = true
+        clearAlertsSentAt = .now
+
+        if demo != nil {
+            // The simulated pack has nothing to clear and no radio to clear it over,
+            // so answer on a delay rather than before the finger has left the button.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self, self.demo != nil, self.isClearingAlerts else { return }
+                self.finishClearingAlerts(.succeeded)
+            }
+            return
+        }
+
+        // Which write to watch for: its answer shares register 0x01 with the command
+        // that merely closes factory mode, so only the exact bytes tell them apart.
+        pendingClearAlerts = last
+        enqueueWrite(commands)
+    }
+
+    private func finishClearingAlerts(_ outcome: WriteOutcome) {
+        pendingClearAlerts = nil
+        clearAlertsSentAt = nil
+        isClearingAlerts = false
+        clearAlertsOutcome = outcome
+    }
+
+    /// Gives up on a reset the pack never answered, so the button cannot sit spinning
+    /// for the rest of the session.
+    private func expireClearAlerts() {
+        guard let sentAt = clearAlertsSentAt,
+              Date.now.timeIntervalSince(sentAt) >= Self.writeTimeout
+        else { return }
+        finishClearingAlerts(.rejected("The BMS did not answer."))
+    }
+
     // MARK: - Hardware password
 
     func createPassword(_ new: String) {
@@ -468,7 +543,7 @@ final class BMSConnection: NSObject {
     // MARK: - Incoming events
 
     private func handle(_ event: BMSEvent) {
-        retireInFlight(answering: event.register)
+        let answered = retireInFlight(answering: event.register)
 
         switch event.kind {
         case .basicInfo(let decoded):
@@ -480,7 +555,9 @@ final class BMSConnection: NSObject {
             cellVoltages = voltages
             lastUpdate = .now
         case .accepted:
-            break
+            if answersClearAlerts(answered) {
+                finishClearingAlerts(.succeeded)
+            }
         case .passwordAccepted:
             passwordOutcome = .succeeded
         case .passwordRejected:
@@ -488,13 +565,27 @@ final class BMSConnection: NSObject {
             settings.hasPassword = true
             saveSettings()
             abandonBracket()
+            if isClearingAlerts {
+                finishClearingAlerts(.rejected("The BMS rejected the password."))
+            }
         case .rejected:
             mosWrite.cancel()
             abandonBracket()
             lastError = settings.hasPassword
                 ? "The BMS rejected the command. Check the password."
                 : "The BMS rejected the command. This pack may be hardware locked."
+            if isClearingAlerts {
+                finishClearingAlerts(.rejected("The BMS refused to clear the alerts."))
+            }
         }
+    }
+
+    /// Whether this answer is the one the alert reset was waiting for. Matching on
+    /// the bytes and not the register is the point: closing factory mode answers on
+    /// the same register, and only the payload separates the two.
+    private func answersClearAlerts(_ answered: BMSCommand?) -> Bool {
+        guard let pending = pendingClearAlerts, let answered else { return false }
+        return answered.bytes == pending.bytes
     }
 
     /// Drops the rest of a refused write bracket, but keeps the command that closes

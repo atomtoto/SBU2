@@ -47,7 +47,12 @@ struct OverviewView: View {
                                    emptyMillivolts: Double(connection.settings.cellEmptyVoltage),
                                    fullMillivolts: Double(connection.settings.cellFullVoltage))
                 }
-                BatteryInfoBox(info: connection.info)
+                BatteryInfoBox(info: connection.info,
+                               canClearAlerts: connection.canClearAlerts,
+                               isClearingAlerts: connection.isClearingAlerts,
+                               clearAlertsOutcome: connection.clearAlertsOutcome) {
+                    connection.clearAlerts()
+                }
                 if let error = connection.lastError {
                     Card {
                         HStack {
@@ -402,6 +407,13 @@ private struct CellVoltageBar: View {
 
 private struct BatteryInfoBox: View {
     let info: BasicInfo
+    let canClearAlerts: Bool
+    let isClearingAlerts: Bool
+    let clearAlertsOutcome: BMSConnection.WriteOutcome
+    let onClearAlerts: () -> Void
+
+    @State private var confirmingClear = false
+    @State private var showingOutcome = false
 
     var body: some View {
         Card {
@@ -434,7 +446,62 @@ private struct BatteryInfoBox: View {
                         }
                     }
                 }
+                if canClearAlerts {
+                    Divider()
+                    GlassPillButton(title: "Reset alerts",
+                                    color: .red,
+                                    symbol: "exclamationmark.triangle",
+                                    isWaiting: isClearingAlerts,
+                                    isBusy: isClearingAlerts) {
+                        confirmingClear = true
+                    }
+                    .padding(.top, 2)
+                    if showingOutcome {
+                        outcomeNote
+                    }
+                }
             }
         }
+        .confirmationDialog("Reset the stored alerts?",
+                            isPresented: $confirmingClear,
+                            titleVisibility: .visible) {
+            Button("Reset alerts", role: .destructive, action: onClearAlerts)
+            Button("Cancel", role: .cancel) { confirmingClear = false }
+        } message: {
+            Text("This wipes the fault record the BMS keeps, and cannot be undone. A protection that is still tripped comes straight back on the next reading.")
+        }
+        // A refusal stays up — it is the only place it is explained. Success bows out
+        // on its own rather than sitting on a dashboard that is meant to be watched.
+        .task(id: clearAlertsOutcome) {
+            guard clearAlertsOutcome != .idle else {
+                showingOutcome = false
+                return
+            }
+            showingOutcome = true
+            guard clearAlertsOutcome == .succeeded else { return }
+            try? await Task.sleep(for: .seconds(4))
+            showingOutcome = false
+        }
+    }
+
+    /// The line under the button, once there is something to say about the last reset.
+    @ViewBuilder
+    private var outcomeNote: some View {
+        switch clearAlertsOutcome {
+        case .idle:
+            EmptyView()
+        case .succeeded:
+            note("The BMS cleared its stored alerts.", tint: .green)
+        case .rejected(let message):
+            note(message, tint: .red)
+        }
+    }
+
+    private func note(_ message: String, tint: Color) -> some View {
+        Text(message)
+            .font(.footnote)
+            .foregroundStyle(tint)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
     }
 }

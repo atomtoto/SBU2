@@ -55,6 +55,29 @@ struct JBDAdapterTests {
         #expect(commands.first?.bytes == JBD.enterPassword("123456"))
     }
 
+    @Test("Clearing the alerts opens factory mode and wipes on the way out")
+    func clearAlertsBracket() {
+        let commands = JBDAdapter().clearAlertsCommands(password: nil)
+        #expect(commands.map(\.bytes) == [JBD.openFactoryMode, JBD.clearErrorCounts])
+        // The wipe doubles as the factory-mode close, so it has to survive a refusal
+        // of the open the way a plain close does.
+        #expect(commands.map(\.isCleanup) == [false, true])
+        #expect(commands.last?.expectedRegister == JBD.Register.factoryModeClose.rawValue)
+    }
+
+    @Test("A protected pack is unlocked before its alerts are cleared")
+    func clearAlertsWithPassword() {
+        let commands = JBDAdapter().clearAlertsCommands(password: "123456")
+        #expect(commands.count == 3)
+        #expect(commands.first?.bytes == JBD.enterPassword("123456"))
+    }
+
+    @Test("Clearing the alerts is the close register carrying 0x2828, not 0x0000")
+    func clearErrorCountsFrame() {
+        #expect(JBD.clearErrorCounts == [0xDD, 0x5A, 0x01, 0x02, 0x28, 0x28, 0xFF, 0xAD, 0x77])
+        #expect(JBD.clearErrorCounts != JBD.closeFactoryMode)
+    }
+
     @Test("A malformed password produces no commands at all")
     func malformedPassword() {
         let adapter = JBDAdapter()

@@ -68,6 +68,8 @@ protocol BMSProtocolAdapter: AnyObject {
 
     var supportsMOSControl: Bool { get }
     var supportsPasswordManagement: Bool { get }
+    /// Whether the family can wipe the fault records the pack has stored.
+    var supportsClearingAlerts: Bool { get }
 
     /// The reads issued on every polling tick, in the order they should go out.
     func pollCommands() -> [BMSCommand]
@@ -75,6 +77,10 @@ protocol BMSProtocolAdapter: AnyObject {
     /// The bracketed sequence that switches the MOSFETs. `password` is the hardware
     /// password to replay first, or `nil` on an unprotected pack.
     func mosCommands(charge: Bool, discharge: Bool, password: String?) -> [BMSCommand]
+
+    /// The bracketed sequence that clears the pack's stored alerts. Empty when the
+    /// family cannot do it. `password` replays as it does for `mosCommands`.
+    func clearAlertsCommands(password: String?) -> [BMSCommand]
 
     /// Empty when the family cannot do this, or when the password is malformed.
     func createPasswordCommands(_ new: String) -> [BMSCommand]

@@ -36,6 +36,7 @@ final class JBDAdapter: BMSProtocolAdapter {
 
     var supportsMOSControl: Bool { true }
     var supportsPasswordManagement: Bool { true }
+    var supportsClearingAlerts: Bool { true }
 
     // MARK: - Commands
 
@@ -50,6 +51,19 @@ final class JBDAdapter: BMSProtocolAdapter {
             + [command(JBD.openFactoryMode, .factoryModeOpen),
                command(JBD.mosControl(charge: charge, discharge: discharge), .mosControl),
                closeFactoryMode]
+    }
+
+    /// Unlock if the pack is protected, open factory mode, then clear on the way out.
+    ///
+    /// The clearing write doubles as the one that leaves factory mode, so it carries
+    /// `isCleanup` for the same reason `closeFactoryMode` does: a pack whose
+    /// factory-mode open was refused must not be left waiting with it open.
+    func clearAlertsCommands(password: String?) -> [BMSCommand] {
+        unlockCommands(password)
+            + [command(JBD.openFactoryMode, .factoryModeOpen),
+               BMSCommand(bytes: JBD.clearErrorCounts,
+                          expectedRegister: JBD.Register.factoryModeClose.rawValue,
+                          isCleanup: true)]
     }
 
     func createPasswordCommands(_ new: String) -> [BMSCommand] {

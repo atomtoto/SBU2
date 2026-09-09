@@ -88,6 +88,17 @@ enum JBD {
         writeRequest(.factoryModeClose, payload: [0x00, 0x00])
     }
 
+    /// Wipes the fault records the BMS keeps — the counters behind register `0xAA`,
+    /// one per protection — and leaves factory mode in the same write.
+    ///
+    /// It is the *same* register as `closeFactoryMode`: the firmware reads `0x2828`
+    /// in place of the usual `0x0000` as "clear the errors on your way out". Both
+    /// therefore answer on register `0x01`, so nothing downstream can tell the two
+    /// apart by register alone.
+    static var clearErrorCounts: [UInt8] {
+        writeRequest(.factoryModeClose, payload: [0x28, 0x28])
+    }
+
     /// Bit 0 switches the charge MOSFET *off*, bit 1 the discharge MOSFET *off*.
     static func mosControl(charge: Bool, discharge: Bool) -> [UInt8] {
         var code: UInt8 = 0
