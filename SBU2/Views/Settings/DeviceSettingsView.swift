@@ -83,6 +83,18 @@ struct DeviceSettingsView: View {
                 }
             }
 
+            if connection.supportsCalibration {
+                Section {
+                    NavigationLink("Calibration") {
+                        CalibrationSettingsView()
+                    }
+                } header: {
+                    Text("Measurement")
+                } footer: {
+                    Text("Tells the BMS what its readings should really be. Every protection is decided from those readings, so this is worth doing only with a meter in hand.")
+                }
+            }
+
             Section {
                 Toggle("Charge Limit", isOn: $connection.settings.chargeLimitEnabled)
                 MillivoltField(title: "Cell empty voltage", value: $connection.settings.cellEmptyVoltage)

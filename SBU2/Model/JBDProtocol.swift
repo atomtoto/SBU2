@@ -27,7 +27,8 @@ enum JBD {
     /// Smallest possible frame: start + register + status + length + checksum + stop.
     static let overhead = 7
 
-    /// Where the payload length sits in a frame.
+    /// Where the register and the payload length sit in a frame.
+    static let registerIndex = 2
     static let lengthIndex = 3
 
     /// The framing `FrameAssembler` needs to cut JBD answers out of the byte stream.
@@ -88,16 +89,82 @@ enum JBD {
         writeRequest(.factoryModeClose, payload: [0x00, 0x00])
     }
 
-    /// Wipes the fault records the BMS keeps — the counters behind register `0xAA`,
-    /// one per protection — and leaves factory mode in the same write.
+    /// Leaves factory mode *and commits the EEPROM*, which is the same thing as
+    /// wiping the fault records the pack keeps behind register `0xAA`.
     ///
-    /// It is the *same* register as `closeFactoryMode`: the firmware reads `0x2828`
-    /// in place of the usual `0x0000` as "clear the errors on your way out". Both
-    /// therefore answer on register `0x01`, so nothing downstream can tell the two
-    /// apart by register alone.
-    static var clearErrorCounts: [UInt8] {
+    /// It is the same register as `closeFactoryMode` — only the payload differs, so
+    /// both answer on register `0x01` and nothing downstream can tell them apart by
+    /// register alone. An otherwise empty factory bracket ending here is how the
+    /// reference implementation clears the errors, and it is what the settings that
+    /// have to survive a power cycle end with.
+    static var saveAndCloseFactoryMode: [UInt8] {
         writeRequest(.factoryModeClose, payload: [0x28, 0x28])
     }
+
+    // MARK: - Calibration
+
+    /// The EEPROM registers a calibration writes to. Each takes one big-endian
+    /// 16-bit word, and the pack works out its own correction from the true figure
+    /// it is handed.
+    enum Calibration {
+        /// One register per cell, `0xB0` through `0xCF` — 32 of them. The word is
+        /// the cell's true voltage in millivolts.
+        static let cellBase: UInt8 = 0xB0
+        static let cellCount = 32
+        /// One register per NTC, `0xD0` through `0xD7`. The word is tenths of a
+        /// kelvin, the same scale the readings come back in.
+        static let temperatureBase: UInt8 = 0xD0
+        static let temperatureCount = 8
+        /// Zeroes the current reading; the word is always zero.
+        static let idleCurrent: UInt8 = 0xAD
+        /// Gain, one register per direction. The word is hundredths of an amp, the
+        /// scale the current reading uses.
+        static let chargeCurrent: UInt8 = 0xAE
+        static let dischargeCurrent: UInt8 = 0xAF
+    }
+
+    private static func word(_ value: UInt16) -> [UInt8] {
+        [UInt8(value >> 8), UInt8(value & 0x00FF)]
+    }
+
+    private static func calibrationWrite(register: UInt8, word value: UInt16) -> [UInt8] {
+        frame(direction: writeByte, register: register, payload: word(value))
+    }
+
+    /// Hands the pack the true voltage of one cell, in millivolts.
+    static func calibrateCell(index: Int, millivolts: Int) -> [UInt8]? {
+        guard (0..<Calibration.cellCount).contains(index),
+              let value = UInt16(exactly: millivolts)
+        else { return nil }
+        return calibrationWrite(register: Calibration.cellBase + UInt8(index), word: value)
+    }
+
+    /// Hands the pack the true temperature at one sensor.
+    static func calibrateTemperature(index: Int, celsius: Double) -> [UInt8]? {
+        guard (0..<Calibration.temperatureCount).contains(index) else { return nil }
+        let tenthsOfKelvin = ((celsius + 273.15) * 10).rounded()
+        guard let value = UInt16(exactly: tenthsOfKelvin) else { return nil }
+        return calibrationWrite(register: Calibration.temperatureBase + UInt8(index), word: value)
+    }
+
+    /// Tells the pack that what it is measuring right now is zero.
+    static var calibrateIdleCurrent: [UInt8] {
+        calibrationWrite(register: Calibration.idleCurrent, word: 0)
+    }
+
+    /// Hands the pack the true current flowing in the given direction, in amps.
+    ///
+    /// The magnitude is written whichever way the current runs: the register itself
+    /// says which direction is being calibrated, and a negative word risks being read
+    /// as a very large positive one by a firmware that treats it as unsigned.
+    static func calibrateCurrent(charging: Bool, amperes: Double) -> [UInt8]? {
+        let hundredths = (abs(amperes) * 100).rounded()
+        guard let value = UInt16(exactly: hundredths), value <= UInt16(Int16.max) else { return nil }
+        let register = charging ? Calibration.chargeCurrent : Calibration.dischargeCurrent
+        return calibrationWrite(register: register, word: value)
+    }
+
+    // MARK: - MOSFETs
 
     /// Bit 0 switches the charge MOSFET *off*, bit 1 the discharge MOSFET *off*.
     static func mosControl(charge: Bool, discharge: Bool) -> [UInt8] {

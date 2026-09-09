@@ -37,6 +37,7 @@ final class JBDAdapter: BMSProtocolAdapter {
     var supportsMOSControl: Bool { true }
     var supportsPasswordManagement: Bool { true }
     var supportsClearingAlerts: Bool { true }
+    var supportsCalibration: Bool { true }
 
     // MARK: - Commands
 
@@ -60,10 +61,40 @@ final class JBDAdapter: BMSProtocolAdapter {
     /// factory-mode open was refused must not be left waiting with it open.
     func clearAlertsCommands(password: String?) -> [BMSCommand] {
         unlockCommands(password)
+            + [command(JBD.openFactoryMode, .factoryModeOpen), saveAndCloseFactoryMode]
+    }
+
+    /// Unlock if the pack is protected, open factory mode, hand over the true figure,
+    /// then leave.
+    ///
+    /// Whether that last step commits the EEPROM follows the reference
+    /// implementation exactly: the current *gain* is saved, while the per-cell,
+    /// per-sensor and zero-current corrections are not — those the firmware keeps on
+    /// its own. Committing where it does not is not a free extra safety net; it is a
+    /// different command, and this is not the place to improvise.
+    func calibrationCommands(_ calibration: BMSCalibration, password: String?) -> [BMSCommand] {
+        guard calibration.isPlausible, let write = writeBytes(for: calibration) else { return [] }
+        return unlockCommands(password)
             + [command(JBD.openFactoryMode, .factoryModeOpen),
-               BMSCommand(bytes: JBD.clearErrorCounts,
-                          expectedRegister: JBD.Register.factoryModeClose.rawValue,
-                          isCleanup: true)]
+               // The calibration registers are not in `JBD.Register`: they are a
+               // block of addresses, and each answers on its own.
+               BMSCommand(bytes: write, expectedRegister: write[JBD.registerIndex]),
+               calibration.savesToEEPROM ? saveAndCloseFactoryMode : closeFactoryMode]
+    }
+
+    private func writeBytes(for calibration: BMSCalibration) -> [UInt8]? {
+        switch calibration {
+        case .cell(let index, let millivolts):
+            JBD.calibrateCell(index: index, millivolts: millivolts)
+        case .temperature(let index, let celsius):
+            JBD.calibrateTemperature(index: index, celsius: celsius)
+        case .idleCurrent:
+            JBD.calibrateIdleCurrent
+        case .chargeCurrent(let amperes):
+            JBD.calibrateCurrent(charging: true, amperes: amperes)
+        case .dischargeCurrent(let amperes):
+            JBD.calibrateCurrent(charging: false, amperes: amperes)
+        }
     }
 
     func createPasswordCommands(_ new: String) -> [BMSCommand] {
@@ -93,8 +124,16 @@ final class JBDAdapter: BMSProtocolAdapter {
         JBD.isValidPassword(password)
     }
 
+    /// Both of these end a bracket, so both carry `isCleanup`: a pack whose
+    /// factory-mode open was refused must not be left waiting with it open.
     private var closeFactoryMode: BMSCommand {
         BMSCommand(bytes: JBD.closeFactoryMode,
+                   expectedRegister: JBD.Register.factoryModeClose.rawValue,
+                   isCleanup: true)
+    }
+
+    private var saveAndCloseFactoryMode: BMSCommand {
+        BMSCommand(bytes: JBD.saveAndCloseFactoryMode,
                    expectedRegister: JBD.Register.factoryModeClose.rawValue,
                    isCleanup: true)
     }

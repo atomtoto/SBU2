@@ -96,12 +96,33 @@ final class BMSConnection: NSObject {
     /// Tracks the MOSFET command currently waiting for the pack to confirm it.
     private(set) var mosWrite = MOSWriteTracker()
     private(set) var passwordOutcome: WriteOutcome = .idle
-    /// What the BMS said about the last alert reset, and whether one is still on its
-    /// way. The command is fire-and-forget as far as the readings go — nothing polled
-    /// reports the stored fault records — so the answer to the write itself is the
-    /// only confirmation there is.
+    /// What the BMS said about the last alert reset and the last calibration.
+    ///
+    /// Neither shows up in anything polled — no reading reports the stored fault
+    /// records, and a calibration only shifts the readings by however far off they
+    /// were — so the answer to the write itself is the only confirmation there is.
     private(set) var clearAlertsOutcome: WriteOutcome = .idle
-    private(set) var isClearingAlerts = false
+    private(set) var calibrationOutcome: WriteOutcome = .idle
+
+    /// A bracket the user asked for, waiting on the answer to the write that ends it.
+    ///
+    /// Deliberately observable: the buttons spin off it.
+    private(set) var pendingWrite: PendingWrite?
+
+    /// One of those brackets, and the write whose answer ends the wait.
+    ///
+    /// The kind has to be tracked alongside the bytes because the bytes are not
+    /// enough on their own: an alert reset and a current calibration both finish with
+    /// the very same save-and-close write.
+    struct PendingWrite: Equatable {
+        enum Kind { case clearAlerts, calibration }
+        var kind: Kind
+        var terminator: BMSCommand
+        var sentAt: Date
+    }
+
+    var isClearingAlerts: Bool { pendingWrite?.kind == .clearAlerts }
+    var isCalibrating: Bool { pendingWrite?.kind == .calibration }
     /// The family the open device speaks.
     private(set) var protocolID: BMSProtocolID = .jbd
 
@@ -123,6 +144,8 @@ final class BMSConnection: NSObject {
 
     var supportsPasswordManagement: Bool { adapter.supportsPasswordManagement }
 
+    var supportsCalibration: Bool { adapter.supportsCalibration }
+
     func isValidPassword(_ password: String) -> Bool { adapter.isValidPassword(password) }
 
     // MARK: Internals
@@ -139,10 +162,6 @@ final class BMSConnection: NSObject {
     @ObservationIgnored private var outbox: [BMSCommand] = []
     /// The command whose answer the transport is waiting for.
     @ObservationIgnored private var inFlight: BMSCommand?
-    /// The alert-clearing write whose answer decides `clearAlertsOutcome`, and when
-    /// it went out.
-    @ObservationIgnored private var pendingClearAlerts: BMSCommand?
-    @ObservationIgnored private var clearAlertsSentAt: Date?
     @ObservationIgnored private var inFlightSince: Date?
     /// When the pack last sent anything at all, complete frame or not. Used both to
     /// avoid interrupting an answer in progress and to notice a dead conversation.
@@ -200,7 +219,9 @@ final class BMSConnection: NSObject {
         central.stopScan()
         lastError = nil
         passwordOutcome = .idle
-        finishClearingAlerts(.idle)
+        clearAlertsOutcome = .idle
+        calibrationOutcome = .idle
+        pendingWrite = nil
         openDeviceID = device.id
         settings = DeviceSettingsStore.load(device.id)
 
@@ -255,8 +276,8 @@ final class BMSConnection: NSObject {
         cellVoltages = []
         lastUpdate = nil
         mosWrite.cancel()
-        if isClearingAlerts {
-            finishClearingAlerts(.rejected("The link dropped before the BMS answered."))
+        if let pending = pendingWrite {
+            finish(pending.kind, .rejected("The link dropped before the BMS answered."))
         }
         writeCharacteristic = nil
         notifying = false
@@ -312,7 +333,7 @@ final class BMSConnection: NSObject {
         if mosWrite.expire() {
             lastError = "The BMS did not confirm the command within \(Int(MOSWriteTracker.timeout)) seconds."
         }
-        expireClearAlerts()
+        expirePendingWrite()
 
         guard demo == nil else {
             stepDemo()
@@ -422,7 +443,19 @@ final class BMSConnection: NSObject {
     // MARK: - Writes
 
     var canControlMOS: Bool {
-        status.isConnected && adapter.supportsMOSControl
+        status.isConnected && adapter.supportsMOSControl && !isWriting
+    }
+
+    /// Whether a bracket is still queued or unanswered.
+    ///
+    /// Brackets are never interleaved. They open factory mode, and two of them
+    /// overlapping is how a pack ends up in a state nobody asked for — and how an
+    /// answer gets credited to the wrong one, since several of them end on the same
+    /// register with the same payload.
+    private var isWriting: Bool {
+        if pendingWrite != nil { return true }
+        if let inFlight, !inFlight.isPoll { return true }
+        return outbox.contains { !$0.isPoll }
     }
 
     /// Sends a MOSFET command and waits for the pack to report the requested state.
@@ -455,10 +488,14 @@ final class BMSConnection: NSObject {
         settings.hasPassword ? settings.password : nil
     }
 
-    // MARK: - Stored alerts
+    // MARK: - One-shot brackets
 
     var canClearAlerts: Bool {
-        status.isConnected && adapter.supportsClearingAlerts
+        status.isConnected && adapter.supportsClearingAlerts && !isWriting
+    }
+
+    var canCalibrate: Bool {
+        status.isConnected && adapter.supportsCalibration && !isWriting
     }
 
     /// Wipes the fault records the pack has stored.
@@ -467,46 +504,57 @@ final class BMSConnection: NSObject {
     /// come from the readings and re-appear on the next poll for as long as whatever
     /// tripped them is still true.
     func clearAlerts() {
-        guard canClearAlerts, !isClearingAlerts else { return }
+        guard canClearAlerts else { return }
+        clearAlertsOutcome = .idle
+        begin(.clearAlerts, adapter.clearAlertsCommands(password: replayPassword))
+    }
 
-        let commands = adapter.clearAlertsCommands(password: replayPassword)
-        guard let last = commands.last else { return }
+    /// Tells the pack what one of its readings should really be.
+    func calibrate(_ calibration: BMSCalibration) {
+        guard canCalibrate else { return }
+        calibrationOutcome = .idle
+        begin(.calibration, adapter.calibrationCommands(calibration, password: replayPassword))
+    }
+
+    /// Sends a bracket the user asked for, and starts waiting on the write that ends
+    /// it. Only one is ever in flight — see `isWriting`.
+    private func begin(_ kind: PendingWrite.Kind, _ commands: [BMSCommand]) {
+        guard let terminator = commands.last else {
+            finish(kind, .rejected("This pack cannot be asked for that."))
+            return
+        }
 
         lastError = nil
-        clearAlertsOutcome = .idle
-        isClearingAlerts = true
-        clearAlertsSentAt = .now
+        pendingWrite = PendingWrite(kind: kind, terminator: terminator, sentAt: .now)
 
         if demo != nil {
-            // The simulated pack has nothing to clear and no radio to clear it over,
-            // so answer on a delay rather than before the finger has left the button.
+            // The simulated pack has no radio, so answer on a delay rather than
+            // before the finger has left the button.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                guard let self, self.demo != nil, self.isClearingAlerts else { return }
-                self.finishClearingAlerts(.succeeded)
+                guard let self, self.demo != nil, self.pendingWrite?.kind == kind else { return }
+                self.finish(kind, .succeeded)
             }
             return
         }
 
-        // Which write to watch for: its answer shares register 0x01 with the command
-        // that merely closes factory mode, so only the exact bytes tell them apart.
-        pendingClearAlerts = last
         enqueueWrite(commands)
     }
 
-    private func finishClearingAlerts(_ outcome: WriteOutcome) {
-        pendingClearAlerts = nil
-        clearAlertsSentAt = nil
-        isClearingAlerts = false
-        clearAlertsOutcome = outcome
+    private func finish(_ kind: PendingWrite.Kind, _ outcome: WriteOutcome) {
+        pendingWrite = nil
+        switch kind {
+        case .clearAlerts: clearAlertsOutcome = outcome
+        case .calibration: calibrationOutcome = outcome
+        }
     }
 
-    /// Gives up on a reset the pack never answered, so the button cannot sit spinning
+    /// Gives up on a bracket the pack never answered, so a button cannot sit spinning
     /// for the rest of the session.
-    private func expireClearAlerts() {
-        guard let sentAt = clearAlertsSentAt,
-              Date.now.timeIntervalSince(sentAt) >= Self.writeTimeout
+    private func expirePendingWrite() {
+        guard let pending = pendingWrite,
+              Date.now.timeIntervalSince(pending.sentAt) >= Self.writeTimeout
         else { return }
-        finishClearingAlerts(.rejected("The BMS did not answer."))
+        finish(pending.kind, .rejected("The BMS did not answer."))
     }
 
     // MARK: - Hardware password
@@ -555,8 +603,8 @@ final class BMSConnection: NSObject {
             cellVoltages = voltages
             lastUpdate = .now
         case .accepted:
-            if answersClearAlerts(answered) {
-                finishClearingAlerts(.succeeded)
+            if let pending = pendingWrite, answered?.bytes == pending.terminator.bytes {
+                finish(pending.kind, .succeeded)
             }
         case .passwordAccepted:
             passwordOutcome = .succeeded
@@ -565,8 +613,8 @@ final class BMSConnection: NSObject {
             settings.hasPassword = true
             saveSettings()
             abandonBracket()
-            if isClearingAlerts {
-                finishClearingAlerts(.rejected("The BMS rejected the password."))
+            if let pending = pendingWrite {
+                finish(pending.kind, .rejected("The BMS rejected the password."))
             }
         case .rejected:
             mosWrite.cancel()
@@ -574,18 +622,10 @@ final class BMSConnection: NSObject {
             lastError = settings.hasPassword
                 ? "The BMS rejected the command. Check the password."
                 : "The BMS rejected the command. This pack may be hardware locked."
-            if isClearingAlerts {
-                finishClearingAlerts(.rejected("The BMS refused to clear the alerts."))
+            if let pending = pendingWrite {
+                finish(pending.kind, .rejected("The BMS refused the command."))
             }
         }
-    }
-
-    /// Whether this answer is the one the alert reset was waiting for. Matching on
-    /// the bytes and not the register is the point: closing factory mode answers on
-    /// the same register, and only the payload separates the two.
-    private func answersClearAlerts(_ answered: BMSCommand?) -> Bool {
-        guard let pending = pendingClearAlerts, let answered else { return false }
-        return answered.bytes == pending.bytes
     }
 
     /// Drops the rest of a refused write bracket, but keeps the command that closes

@@ -41,6 +41,51 @@ struct BMSCommand: Equatable {
     var isCleanup = false
 }
 
+/// One calibration the user has asked for.
+///
+/// Each carries the *true* figure, measured with something trustworthy: the pack is
+/// told what it should be reading and works out its own correction. The ranges are
+/// sanity limits rather than protocol limits — they exist so a mistyped figure is
+/// refused here instead of quietly landing in the pack's EEPROM.
+enum BMSCalibration: Equatable {
+    /// The measured voltage at one cell's terminals, in millivolts.
+    case cell(index: Int, millivolts: Int)
+    /// The measured temperature at one sensor, in degrees Celsius.
+    case temperature(index: Int, celsius: Double)
+    /// Zeroes the current reading. Nothing may be flowing when this is sent.
+    case idleCurrent
+    /// The measured current now flowing, in amps, as a magnitude.
+    case chargeCurrent(amperes: Double)
+    case dischargeCurrent(amperes: Double)
+
+    static let millivoltRange = 500...5000
+    static let celsiusRange = -40.0...125.0
+    /// The upper end is what a signed 16-bit register in hundredths of an amp holds.
+    static let ampereRange = 0.1...327.0
+
+    var isPlausible: Bool {
+        switch self {
+        case .cell(_, let millivolts):
+            Self.millivoltRange.contains(millivolts)
+        case .temperature(_, let celsius):
+            Self.celsiusRange.contains(celsius)
+        case .idleCurrent:
+            true
+        case .chargeCurrent(let amperes), .dischargeCurrent(let amperes):
+            Self.ampereRange.contains(abs(amperes))
+        }
+    }
+
+    /// Whether the pack has to be told to commit this one to EEPROM on the way out.
+    /// Only the current gain does; the rest the firmware keeps by itself.
+    var savesToEEPROM: Bool {
+        switch self {
+        case .chargeCurrent, .dischargeCurrent: true
+        case .cell, .temperature, .idleCurrent: false
+        }
+    }
+}
+
 /// What an adapter understood in the incoming byte stream.
 struct BMSEvent: Equatable {
 
@@ -70,6 +115,8 @@ protocol BMSProtocolAdapter: AnyObject {
     var supportsPasswordManagement: Bool { get }
     /// Whether the family can wipe the fault records the pack has stored.
     var supportsClearingAlerts: Bool { get }
+    /// Whether the family can be told what its readings should really be.
+    var supportsCalibration: Bool { get }
 
     /// The reads issued on every polling tick, in the order they should go out.
     func pollCommands() -> [BMSCommand]
@@ -81,6 +128,10 @@ protocol BMSProtocolAdapter: AnyObject {
     /// The bracketed sequence that clears the pack's stored alerts. Empty when the
     /// family cannot do it. `password` replays as it does for `mosCommands`.
     func clearAlertsCommands(password: String?) -> [BMSCommand]
+
+    /// The bracketed sequence that applies one calibration. Empty when the family
+    /// cannot do it, or when the figure is outside `BMSCalibration`'s sanity range.
+    func calibrationCommands(_ calibration: BMSCalibration, password: String?) -> [BMSCommand]
 
     /// Empty when the family cannot do this, or when the password is malformed.
     func createPasswordCommands(_ new: String) -> [BMSCommand]

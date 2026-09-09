@@ -55,12 +55,12 @@ struct JBDAdapterTests {
         #expect(commands.first?.bytes == JBD.enterPassword("123456"))
     }
 
-    @Test("Clearing the alerts opens factory mode and wipes on the way out")
+    @Test("Clearing the alerts is an empty factory bracket that commits on the way out")
     func clearAlertsBracket() {
         let commands = JBDAdapter().clearAlertsCommands(password: nil)
-        #expect(commands.map(\.bytes) == [JBD.openFactoryMode, JBD.clearErrorCounts])
-        // The wipe doubles as the factory-mode close, so it has to survive a refusal
-        // of the open the way a plain close does.
+        #expect(commands.map(\.bytes) == [JBD.openFactoryMode, JBD.saveAndCloseFactoryMode])
+        // The committing write doubles as the factory-mode close, so it has to survive
+        // a refusal of the open the way a plain close does.
         #expect(commands.map(\.isCleanup) == [false, true])
         #expect(commands.last?.expectedRegister == JBD.Register.factoryModeClose.rawValue)
     }
@@ -72,10 +72,74 @@ struct JBDAdapterTests {
         #expect(commands.first?.bytes == JBD.enterPassword("123456"))
     }
 
-    @Test("Clearing the alerts is the close register carrying 0x2828, not 0x0000")
-    func clearErrorCountsFrame() {
-        #expect(JBD.clearErrorCounts == [0xDD, 0x5A, 0x01, 0x02, 0x28, 0x28, 0xFF, 0xAD, 0x77])
-        #expect(JBD.clearErrorCounts != JBD.closeFactoryMode)
+    @Test("Committing on exit is the close register carrying 0x2828, not 0x0000")
+    func saveAndCloseFrame() {
+        #expect(JBD.saveAndCloseFactoryMode == [0xDD, 0x5A, 0x01, 0x02, 0x28, 0x28, 0xFF, 0xAD, 0x77])
+        #expect(JBD.saveAndCloseFactoryMode != JBD.closeFactoryMode)
+    }
+
+    @Test("A cell calibration writes the millivolts to that cell's own register")
+    func cellCalibrationFrame() {
+        // 0xB0 is cell 1, and 3300 mV is 0x0CE4.
+        #expect(JBD.calibrateCell(index: 0, millivolts: 3300)
+                == [0xDD, 0x5A, 0xB0, 0x02, 0x0C, 0xE4, 0xFE, 0x5E, 0x77])
+        // Cell 32 is the last one there is a register for.
+        #expect(JBD.calibrateCell(index: 31, millivolts: 3300)?[JBD.registerIndex] == 0xCF)
+        #expect(JBD.calibrateCell(index: 32, millivolts: 3300) == nil)
+    }
+
+    @Test("A temperature calibration writes tenths of a kelvin, the scale readings use")
+    func temperatureCalibrationFrame() {
+        // 25.05 °C is 2982 tenths of a kelvin, 0x0BA6 — the very bytes the
+        // basic-information frame above carries for that same temperature.
+        #expect(JBD.calibrateTemperature(index: 0, celsius: 25.05)
+                == [0xDD, 0x5A, 0xD0, 0x02, 0x0B, 0xA6, 0xFE, 0x7D, 0x77])
+        #expect(JBD.calibrateTemperature(index: 7, celsius: 25)?[JBD.registerIndex] == 0xD7)
+        #expect(JBD.calibrateTemperature(index: 8, celsius: 25) == nil)
+    }
+
+    @Test("A current calibration writes hundredths of an amp, unsigned either way")
+    func currentCalibrationFrames() {
+        #expect(JBD.calibrateCurrent(charging: true, amperes: 10)?[JBD.registerIndex] == 0xAE)
+        #expect(JBD.calibrateCurrent(charging: false, amperes: 10)?[JBD.registerIndex] == 0xAF)
+        // A discharge reads negative on screen; the register takes the magnitude, so
+        // a firmware treating the word as unsigned cannot read it as hundreds of amps.
+        #expect(JBD.calibrateCurrent(charging: false, amperes: -10)
+                == JBD.calibrateCurrent(charging: false, amperes: 10))
+        #expect(JBD.calibrateIdleCurrent[JBD.registerIndex] == 0xAD)
+    }
+
+    @Test("Only the current gain is committed to EEPROM, as the reference does it")
+    func calibrationTerminators() {
+        let adapter = JBDAdapter()
+        let cell = adapter.calibrationCommands(.cell(index: 0, millivolts: 3300), password: nil)
+        #expect(cell.last?.bytes == JBD.closeFactoryMode)
+
+        let charge = adapter.calibrationCommands(.chargeCurrent(amperes: 10), password: nil)
+        #expect(charge.last?.bytes == JBD.saveAndCloseFactoryMode)
+
+        // Whatever ends the bracket has to be sent even when the open was refused.
+        #expect(cell.last?.isCleanup == true)
+        #expect(charge.last?.isCleanup == true)
+    }
+
+    @Test("A figure no pack could read never reaches the BMS")
+    func implausibleCalibrationsRefused() {
+        let adapter = JBDAdapter()
+        // A missed decimal point, an empty-looking zero, a nonsense temperature, a
+        // current past what the register even holds.
+        let refused: [BMSCalibration] = [.cell(index: 0, millivolts: 33000),
+                                         .cell(index: 0, millivolts: 0),
+                                         .temperature(index: 0, celsius: 900),
+                                         .chargeCurrent(amperes: 5000),
+                                         .dischargeCurrent(amperes: 0)]
+        for calibration in refused {
+            #expect(!calibration.isPlausible)
+            #expect(adapter.calibrationCommands(calibration, password: nil).isEmpty)
+        }
+        // And the ones that make sense do go out.
+        #expect(BMSCalibration.cell(index: 0, millivolts: 3300).isPlausible)
+        #expect(BMSCalibration.idleCurrent.isPlausible)
     }
 
     @Test("A malformed password produces no commands at all")
