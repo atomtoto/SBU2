@@ -116,8 +116,8 @@ private struct DetailBox: View {
         Card {
             HStack(alignment: .center, spacing: 20) {
                 RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                          tint: .stateOfChargeOverview(info.stateOfCharge),
-                          glassArc: true) {
+                          tint: .stateOfChargeOverview(info.stateOfCharge)/*,
+                          glassArc: true*/) {
                     Text(info.stateOfChargeText)
                         .font(.system(size: 24, weight: .bold))
                 }

@@ -93,12 +93,14 @@ private struct HintBanner: View {
     var body: some View {
         HStack {
             Image(systemName: symbol)
+                .foregroundColor(.accent) //
             Text(message)
                 .font(.footnote)
+                .foregroundColor(.accent)
         }
-        .padding(.horizontal)
+        .padding()
         .background {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
     }
@@ -181,7 +183,7 @@ private struct DialsView: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 15)
         .contextMenu {
             Button(action: onEdit) {
                 Text("Edit dials")
@@ -287,14 +289,14 @@ private struct GPSListView: View {
                 }
             }
 
-            HStack {
-                Text("Values represent the average of the last 5 measurements")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal)
+            // Footer de type "List Section Footer"
+                    Text("Values represent the average of the last 5 measurements")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading) // Aligné à gauche comme un vrai footer
+                        .padding(.horizontal, 16) // Aligne visuellement le 'V' avec le 'T' de "Top speed" au-dessus
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 15)
     }
 
     private func row(_ title: String, _ value: String) -> some View {

@@ -123,8 +123,11 @@ struct DialsSettingsView: View {
         Form {
             Section {
                 Toggle("Power dial", isOn: $settings.showPowerDial)
+                    .tint(.accent)
                 Toggle("Speed dial", isOn: $settings.showSpeedDial)
+                    .tint(.accent)
                 Toggle("Remaining Range dial", isOn: $settings.showRangeDial)
+                    .tint(.accent)
             } footer: {
                 Text("When a dial is disabled, the information is still visible in the list below the dials.")
             }
