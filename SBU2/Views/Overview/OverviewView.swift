@@ -21,9 +21,6 @@ struct OverviewView: View {
 
         ScrollView {
             LazyVStack(spacing: 10) {
-                if connection.settings.liontronMode == .autoEnabled {
-                    LiontronModeWarning()
-                }
                 DetailBox(info: connection.info, capacityUnit: appSettings.capacityUnit)
                     .padding(.top, 5)
                 ButtonBox(info: connection.info,
@@ -109,48 +106,6 @@ struct MOSChange: Equatable {
     var confirmTitle: String
 }
 
-// MARK: - Liontron warning
-
-private struct LiontronModeWarning: View {
-    @State private var collapsed = true
-
-    var body: some View {
-        VStack {
-            Button {
-                collapsed.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 20) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .renderingMode(.original)
-                    Text("Liontron protection mode active!")
-                    Image(systemName: collapsed ? "chevron.down" : "chevron.up")
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity)
-                .background {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            VStack {
-                Text("You might need to enter the hardware password in settings")
-                    .multilineTextAlignment(.center)
-                    .animation(.none, value: collapsed)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: collapsed ? 0 : .none)
-            .clipped()
-            .animation(.easeOut, value: collapsed)
-            .padding(collapsed ? 0 : 8)
-            .background {
-                RoundedRectangle(cornerRadius: 25, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
-        }
-    }
-}
-
 // MARK: - Detail box
 
 private struct DetailBox: View {
@@ -206,24 +161,20 @@ private struct ButtonBox: View {
 
     private var chargeColor: Color {
         if chargeHeldForLater { return .blue }
-        guard settings.liontronMode != .autoEnabled else { return .gray }
         return info.chargeMOSEnabled ? Self.on : Self.off
     }
 
     private var chargeSymbol: String {
         if chargeHeldForLater { return "bolt.badge.clock.fill" }
-        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
         return info.chargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
 
     private var dischargeColor: Color {
-        guard settings.liontronMode != .autoEnabled else { return .gray }
-        return info.dischargeMOSEnabled ? Self.on : Self.off
+        info.dischargeMOSEnabled ? Self.on : Self.off
     }
 
     private var dischargeSymbol: String {
-        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
-        return info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
+        info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
 
     var body: some View {

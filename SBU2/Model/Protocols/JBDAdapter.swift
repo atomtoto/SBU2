@@ -114,13 +114,8 @@ final class JBDAdapter: BMSProtocolAdapter {
                  JBD.Register.setPassword.rawValue,
                  JBD.Register.clearPassword.rawValue:
                 return BMSEvent(register: register, kind: .passwordRejected)
-            case JBD.Register.factoryModeOpen.rawValue, JBD.Register.mosControl.rawValue:
-                // 0x80 on a factory-mode write is how a hardware-locked Liontron pack
-                // answers.
-                return BMSEvent(register: register,
-                                kind: .rejected(hardwareLocked: response.status == 0x80))
             default:
-                return BMSEvent(register: register, kind: .rejected(hardwareLocked: false))
+                return BMSEvent(register: register, kind: .rejected)
             }
         }
 

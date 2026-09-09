@@ -109,23 +109,6 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Some Liontron packs reject every write until their hardware password is entered.
-/// The BMS answers `0x80`, which the app uses to lock the MOSFET buttons rather than
-/// letting the user issue commands that silently fail.
-enum LiontronMode: String, Codable, CaseIterable, Identifiable {
-    case autoDisabled, autoEnabled, disabled
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .autoDisabled: return "Auto (off)"
-        case .autoEnabled: return "Auto (on)"
-        case .disabled: return "Disabled"
-        }
-    }
-}
-
 enum ChargeLimitMode: String, Codable, CaseIterable, Identifiable {
     case stateOfCharge, cellVoltage
 
@@ -163,8 +146,6 @@ struct DeviceSettings: Codable, Equatable {
     var showPowerDial = true
     var showSpeedDial = true
     var showRangeDial = true
-
-    var liontronMode: LiontronMode = .autoDisabled
 
     var chargeLimitEnabled = false
     var alwaysShowChargeLimit = false

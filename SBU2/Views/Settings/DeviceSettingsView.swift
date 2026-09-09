@@ -84,18 +84,6 @@ struct DeviceSettingsView: View {
             }
 
             Section {
-                Picker("Liontron Mode", selection: $connection.settings.liontronMode) {
-                    ForEach(LiontronMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-            } header: {
-                Text("Security")
-            } footer: {
-                Text("If you use a Liontron battery, you can hardware lock it. In auto mode the app disables the MOSFET buttons as soon as the BMS rejects a write.")
-            }
-
-            Section {
                 Toggle("Charge Limit", isOn: $connection.settings.chargeLimitEnabled)
                 MillivoltField(title: "Cell empty voltage", value: $connection.settings.cellEmptyVoltage)
                 MillivoltField(title: "Cell nominal voltage", value: $connection.settings.cellNominalVoltage)

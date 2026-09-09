@@ -401,7 +401,7 @@ final class BMSConnection: NSObject {
     // MARK: - Writes
 
     var canControlMOS: Bool {
-        status.isConnected && adapter.supportsMOSControl && settings.liontronMode != .autoEnabled
+        status.isConnected && adapter.supportsMOSControl
     }
 
     /// Sends a MOSFET command and waits for the pack to report the requested state.
@@ -488,13 +488,9 @@ final class BMSConnection: NSObject {
             settings.hasPassword = true
             saveSettings()
             abandonBracket()
-        case .rejected(let hardwareLocked):
+        case .rejected:
             mosWrite.cancel()
             abandonBracket()
-            if hardwareLocked, settings.liontronMode == .autoDisabled {
-                settings.liontronMode = .autoEnabled
-                saveSettings()
-            }
             lastError = settings.hasPassword
                 ? "The BMS rejected the command. Check the password."
                 : "The BMS rejected the command. This pack may be hardware locked."

@@ -56,7 +56,6 @@ struct ChargeBox: View {
             HStack {
                 Image(systemName: "arrow.up.circle.badge.clock")
                 Toggle("Refill the battery later", isOn: refillLaterBinding)
-                    .tint(.orange)
             }
             .padding(.top, 8)
             .disabled(isAtMaximum)

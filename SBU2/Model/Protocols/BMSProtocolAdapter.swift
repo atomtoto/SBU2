@@ -49,9 +49,8 @@ struct BMSEvent: Equatable {
         case cellVoltages([Double])
         /// A write the pack acknowledged.
         case accepted
-        /// A write the pack refused. `hardwareLocked` marks the answer a
-        /// password-protected Liontron pack gives to a factory-mode write.
-        case rejected(hardwareLocked: Bool)
+        /// A write the pack refused.
+        case rejected
         case passwordAccepted
         case passwordRejected
     }

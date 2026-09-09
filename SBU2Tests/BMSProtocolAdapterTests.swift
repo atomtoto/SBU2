@@ -84,14 +84,14 @@ struct JBDAdapterTests {
         #expect(voltages.count == 4)
     }
 
-    @Test("A refused factory-mode write is reported as a hardware lock")
-    func hardwareLock() {
+    @Test("A refused factory-mode write is reported as rejected")
+    func factoryModeRejected() {
         let events = JBDAdapter().ingest(Data([0xDD, 0x00, 0x80, 0x00, 0x00, 0x00, 0x77]))
         #expect(events.count == 1)
-        #expect(events.first?.kind == .rejected(hardwareLocked: true))
+        #expect(events.first?.kind == .rejected)
     }
 
-    @Test("A refused password is not mistaken for a hardware lock")
+    @Test("A refused password is reported separately from a refused write")
     func passwordRejected() {
         let events = JBDAdapter().ingest(Data([0xDD, 0x07, 0x84, 0x00, 0xFF, 0x7C, 0x77]))
         #expect(events.first?.kind == .passwordRejected)
