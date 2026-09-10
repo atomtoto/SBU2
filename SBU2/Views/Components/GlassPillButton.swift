@@ -14,6 +14,23 @@ import UIKit
 /// such button the same size, shape and haptic — only the colour, symbol and title
 /// are meant to vary.
 struct GlassPillButton: View {
+
+    /// How large the pill is drawn.
+    ///
+    /// Only the drawing changes: the tap target stays 44pt tall either way, which is
+    /// Apple's minimum comfortable one and the reason SBU's 35 was worth leaving
+    /// behind. A small pill is for a button sitting among rows of text rather than
+    /// standing on its own.
+    enum Size {
+        case standard, small
+
+        var width: CGFloat { self == .standard ? 152 : 124 }
+        var height: CGFloat { self == .standard ? 44 : 36 }
+        var cornerRadius: CGFloat { self == .standard ? 22 : 18 }
+        var fontSize: CGFloat { self == .standard ? 17 : 15 }
+        var symbolSlot: CGFloat { self == .standard ? 24 : 20 }
+    }
+
     let title: String
     let color: Color
     let symbol: String
@@ -21,6 +38,7 @@ struct GlassPillButton: View {
     var isWaiting: Bool = false
     /// Either sibling button is waiting, so neither accepts a tap.
     var isBusy: Bool = false
+    var size: Size = .standard
     let action: () -> Void
 
     var body: some View {
@@ -32,11 +50,10 @@ struct GlassPillButton: View {
         } label: {
             ZStack {
                 background
-                    // 44pt is Apple's minimum comfortable tap target; SBU's 35 was under it.
-                    .frame(width: 152, height: 44)
+                    .frame(width: size.width, height: size.height)
                 HStack {
                     Text(title)
-                        .font(.system(size: 17))
+                        .font(.system(size: size.fontSize))
                     // A fixed slot sized to the symbol, so swapping it for the
                     // spinner neither shifts the label nor changes apparent size.
                     ZStack {
@@ -50,10 +67,13 @@ struct GlassPillButton: View {
                                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
                         }
                     }
-                    .frame(width: 24, height: 24)
+                    .frame(width: size.symbolSlot, height: size.symbolSlot)
                 }
                 .foregroundColor(.white)
             }
+            // However small the pill is drawn, it stays as easy to hit.
+            .frame(height: max(size.height, 44))
+            .contentShape(.rect)
         }
         // Blocking hit testing rather than .disabled keeps the spinner at full
         // strength while the button is unavailable.
@@ -69,7 +89,7 @@ struct GlassPillButton: View {
     /// the on/off/gray/blue meaning survives either way.
     @ViewBuilder
     private var background: some View {
-        let shape = RoundedRectangle(cornerRadius: 22)
+        let shape = RoundedRectangle(cornerRadius: size.cornerRadius)
         if #available(iOS 26.0, *) {
             Color.clear.glassEffect(.regular.tint(color), in: shape)
         } else {

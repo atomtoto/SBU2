@@ -456,7 +456,8 @@ private struct BatteryInfoBox: View {
                                     color: .red,
                                     symbol: "exclamationmark.triangle",
                                     isWaiting: isClearingAlerts,
-                                    isBusy: isClearingAlerts) {
+                                    isBusy: isClearingAlerts,
+                                    size: .small) {
                         confirmingClear = true
                     }
                     .padding(.top, 2)
@@ -466,7 +467,7 @@ private struct BatteryInfoBox: View {
                 }
             }
         }
-        .confirmationDialog("Reset the stored alerts?",
+        .confirmationDialog("⚠️ Reset the stored alerts?",
                             isPresented: $confirmingClear,
                             titleVisibility: .visible) {
             Button("Reset alerts", role: .destructive, action: onClearAlerts)
