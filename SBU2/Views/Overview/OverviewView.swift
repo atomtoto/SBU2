@@ -39,7 +39,8 @@ struct OverviewView: View {
                     ChargeBox(settings: $connection.settings)
                 }
                 CellTemperatureBox(info: connection.info,
-                                   summary: connection.cellSummary)
+                                   summary: connection.cellSummary,
+                                   remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
                                    balancing: connection.info.balancingCells,
@@ -223,6 +224,9 @@ private struct ButtonBox: View {
 private struct CellTemperatureBox: View {
     let info: BasicInfo
     let summary: CellSummary?
+    /// From the connection rather than from `info`: the estimate leans on the
+    /// readings that came before this one as much as on this one.
+    let remainingHours: Double?
 
     var body: some View {
         HStack {
@@ -280,7 +284,7 @@ private struct CellTemperatureBox: View {
                         Spacer()
                     }
                 }
-                if info.current > 0, let remaining = info.remainingTimeText {
+                if info.current > 0, let remaining = remainingHours?.asRemainingTime {
                     HStack(alignment: .top) {
                         Image(systemName: "clock.badge.checkmark")
                             .frame(width: 20, height: 20, alignment: .center)

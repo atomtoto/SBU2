@@ -93,6 +93,10 @@ final class BMSConnection: NSObject {
     private(set) var cellVoltages: [Double] = []
     private(set) var lastUpdate: Date?
     private(set) var lastError: String?
+    /// Hours until the pack is full, or empty on the way down. Recomputed as each
+    /// reading lands rather than derived on demand, because the estimate depends on
+    /// the readings *before* this one as well as this one.
+    private(set) var remainingHours: Double?
     /// Tracks the MOSFET command currently waiting for the pack to confirm it.
     private(set) var mosWrite = MOSWriteTracker()
     private(set) var passwordOutcome: WriteOutcome = .idle
@@ -166,6 +170,7 @@ final class BMSConnection: NSObject {
     /// When the pack last sent anything at all, complete frame or not. Used both to
     /// avoid interrupting an answer in progress and to notice a dead conversation.
     @ObservationIgnored private var lastNotificationAt: Date?
+    @ObservationIgnored private var estimator = ChargeEstimator()
     @ObservationIgnored private var pollTimer: Timer?
     @ObservationIgnored private var sendTimer: Timer?
     @ObservationIgnored private var wantsConnection = false
@@ -275,6 +280,8 @@ final class BMSConnection: NSObject {
         info = BasicInfo()
         cellVoltages = []
         lastUpdate = nil
+        estimator.forget()
+        remainingHours = nil
         mosWrite.cancel()
         if let pending = pendingWrite {
             finish(pending.kind, .rejected("The link dropped before the BMS answered."))
@@ -362,11 +369,18 @@ final class BMSConnection: NSObject {
         pumpOutbox()
     }
 
+    /// Hands the reading to the estimator and republishes what it makes of it.
+    private func noteForEstimate(_ info: BasicInfo) {
+        estimator.update(info, chemistry: settings.chemistry)
+        remainingHours = estimator.remainingHours
+    }
+
     private func stepDemo() {
         demo?.step()
         info = demo?.info ?? BasicInfo()
         cellVoltages = demo?.cellVoltages ?? []
         lastUpdate = .now
+        noteForEstimate(info)
         // The demo pack never answers a command, so reconcile the tracker here too.
         mosWrite.reconcile(chargeEnabled: info.chargeMOSEnabled,
                            dischargeEnabled: info.dischargeMOSEnabled)
@@ -597,6 +611,7 @@ final class BMSConnection: NSObject {
         case .basicInfo(let decoded):
             info = decoded
             lastUpdate = .now
+            noteForEstimate(decoded)
             mosWrite.reconcile(chargeEnabled: decoded.chargeMOSEnabled,
                                dischargeEnabled: decoded.dischargeMOSEnabled)
         case .cellVoltages(let voltages):

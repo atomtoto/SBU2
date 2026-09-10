@@ -61,13 +61,20 @@ extension BasicInfo {
         }
     }
 
-    /// "2 h 15 min" until full or empty, or `nil` when the current is too small to tell.
-    var remainingTimeText: String? {
-        guard let hours = remainingHours else { return nil }
-        let total = Int((hours * 60).rounded())
-        let (h, m) = (total / 60, total % 60)
-        if h > 99 { return "> 99 h" }
-        return h > 0 ? "\(h) h \(m) min" : "\(m) min"
+}
+
+extension Double {
+    /// This many hours as "2 h 15 min", or "45 min" under the hour.
+    ///
+    /// Rounded to five minutes once there is an hour or more of it left. An estimate
+    /// that far out is not good to the minute, and printing it to the minute only
+    /// invites the reader to believe that it is.
+    var asRemainingTime: String {
+        let step = self >= 1 ? 5.0 : 1.0
+        let total = Int((self * 60 / step).rounded() * step)
+        let (hours, minutes) = (total / 60, total % 60)
+        if hours > 99 { return "> 99 h" }
+        return hours > 0 ? "\(hours) h \(minutes) min" : "\(minutes) min"
     }
 }
 

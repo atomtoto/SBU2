@@ -211,13 +211,6 @@ struct BasicInfoTests {
         #expect(abs(info.power - (-66.25)) < 0.001)
     }
 
-    @Test("Remaining time while discharging")
-    func remainingTime() throws {
-        let info = try decoded()
-        let hours = try #require(info.remainingHours)
-        #expect(abs(hours - 9.12) < 0.001)
-    }
-
     @Test("Pack configuration and state")
     func packState() throws {
         let info = try decoded()

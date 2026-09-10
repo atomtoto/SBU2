@@ -122,6 +122,43 @@ enum ChargeLimitMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// What the cells are made of, which is what decides how a charge finishes.
+enum CellChemistry: String, Codable, CaseIterable, Identifiable {
+    /// The cobalt-oxide family — NMC, LCO — at around 4.2 V a cell.
+    case lithiumIon
+    /// Iron phosphate: 3.65 V a cell, and a far flatter curve on the way there.
+    case lithiumIronPhosphate
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .lithiumIon: return "Li-ion"
+        case .lithiumIronPhosphate: return "LFP"
+        }
+    }
+
+    /// How much of the pack goes in before the charger stops holding the current
+    /// steady and starts holding the voltage instead.
+    ///
+    /// Iron-phosphate cells sit on their plateau nearly to the top and give up only
+    /// the last few percent to the taper. Cobalt-oxide cells start tapering with a
+    /// quarter of the charge still to go, which is why their last bar takes so long.
+    var constantVoltageOnset: Double {
+        switch self {
+        case .lithiumIon: return 0.75
+        case .lithiumIronPhosphate: return 0.95
+        }
+    }
+
+    /// A guess from the full-cell voltage already configured, for a device set up
+    /// before the app thought to ask. The two families are far enough apart in the
+    /// volt-and-a-half between them that the midpoint separates them cleanly.
+    static func inferred(fromCellFullVoltage millivolts: Int) -> CellChemistry {
+        millivolts < 3900 ? .lithiumIronPhosphate : .lithiumIon
+    }
+}
+
 /// Where a scheduled refill stops.
 ///
 /// The charge limit keeps the pack at a level it is happy sitting at. A refill is
@@ -151,6 +188,18 @@ struct DeviceSettings: Codable, Equatable {
     var cellEmptyVoltage = 3000      // mV
     var cellNominalVoltage = 3700    // mV
     var cellFullVoltage = 4200       // mV
+
+    /// Optional for the same reason as `storedRefillTarget`, and read through
+    /// `chemistry`.
+    var storedChemistry: CellChemistry?
+
+    /// Falls back to whatever the configured full-cell voltage implies, so a device
+    /// paired before the app asked still estimates against the right curve without
+    /// anyone having to go and tell it.
+    var chemistry: CellChemistry {
+        get { storedChemistry ?? .inferred(fromCellFullVoltage: cellFullVoltage) }
+        set { storedChemistry = newValue }
+    }
 
     var expectedPower = 1000         // W, calibrates the power dial
     var expectedRange = 65           // km or mi, calibrates the range dial

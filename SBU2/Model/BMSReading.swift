@@ -80,14 +80,6 @@ struct BasicInfo: Equatable {
 
     var power: Double { packVoltage * current }
 
-    /// Hours until full (while charging) or empty (while discharging).
-    var remainingHours: Double? {
-        guard abs(current) > 0.05 else { return nil }
-        let capacity = current > 0 ? nominalCapacity - residualCapacity : residualCapacity
-        guard capacity > 0 else { return nil }
-        return capacity / abs(current)
-    }
-
     /// Requires at least the fixed part of the frame: 23 bytes plus 2 per temperature sensor.
     static func decode(payload: [UInt8]) -> BasicInfo? {
         guard payload.count >= 23 else { return nil }

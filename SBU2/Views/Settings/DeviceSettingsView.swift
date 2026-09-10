@@ -97,13 +97,18 @@ struct DeviceSettingsView: View {
 
             Section {
                 Toggle("Charge Limit", isOn: $connection.settings.chargeLimitEnabled)
+                Picker("Cell chemistry", selection: $connection.settings.chemistry) {
+                    ForEach(CellChemistry.allCases) { chemistry in
+                        Text(chemistry.label).tag(chemistry)
+                    }
+                }
                 MillivoltField(title: "Cell empty voltage", value: $connection.settings.cellEmptyVoltage)
                 MillivoltField(title: "Cell nominal voltage", value: $connection.settings.cellNominalVoltage)
                 MillivoltField(title: "Cell full voltage", value: $connection.settings.cellFullVoltage)
             } header: {
                 Text("Charge")
             } footer: {
-                Text("Charge Limit allows you to stop the charge at a certain chosen value. The function appears when the battery is charging. The empty and full voltages also scale the cell voltage bars in Overview.")
+                Text("Charge Limit allows you to stop the charge at a certain chosen value. The function appears when the battery is charging. The empty and full voltages also scale the cell voltage bars in Overview. The chemistry decides how the remaining charge time is worked out: an LFP pack charges at a steady current almost to the top, a Li-ion one starts slowing down with a quarter still to go.")
             }
         }
         .navigationTitle("Settings")
