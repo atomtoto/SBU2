@@ -122,6 +122,18 @@ enum ChargeLimitMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Where a scheduled refill stops.
+///
+/// The charge limit keeps the pack at a level it is happy sitting at. A refill is
+/// what happens when that level is not what you want any more: either the pack has
+/// drifted below the limit and should go back to it, or it is about to be used and
+/// should go all the way up — late, so it spends as little time full as it can.
+enum RefillTarget: String, Codable, CaseIterable, Identifiable {
+    case chargeLimit, full
+
+    var id: Self { self }
+}
+
 /// Everything the app remembers about one BMS, keyed by its peripheral identifier.
 struct DeviceSettings: Codable, Equatable {
     var name = ""
@@ -154,6 +166,23 @@ struct DeviceSettings: Codable, Equatable {
     var chargeLimitVoltage: Double = 3.25
     var refillLaterEnabled = false
     var refillDate: Date = .now
+
+    /// Optional on purpose, and read through `refillTarget` rather than directly.
+    ///
+    /// The synthesized decoder throws on a key that is not in the stored JSON even
+    /// when the property has a default, and `DeviceSettingsStore.load` answers a
+    /// throw by handing back factory settings — so a plain new field would quietly
+    /// cost every already-paired device its name, its charge limit and its hardware
+    /// password, which the app cannot recover. An optional decodes as `nil` instead.
+    var storedRefillTarget: RefillTarget?
+
+    /// Defaults to the limit, which is what the setting meant when there was no
+    /// choice: nothing that is already switched on starts charging further than it
+    /// used to.
+    var refillTarget: RefillTarget {
+        get { storedRefillTarget ?? .chargeLimit }
+        set { storedRefillTarget = newValue }
+    }
 }
 
 /// Loads and stores `DeviceSettings` per peripheral in `UserDefaults`.

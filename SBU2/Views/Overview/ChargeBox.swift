@@ -72,6 +72,22 @@ struct ChargeBox: View {
                 }
                 .padding(.horizontal)
                 .padding(.top, 3)
+
+                HStack {
+                    Text("Up to")
+                    Spacer(minLength: 12)
+                    // The limit segment carries the figure itself, so the choice
+                    // reads as "back to 80 %" or "all the way" rather than as two
+                    // abstractions.
+                    Picker("Up to", selection: $settings.refillTarget) {
+                        Text(chargeLimitText).tag(RefillTarget.chargeLimit)
+                        Text("Full").tag(RefillTarget.full)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                .padding(.horizontal)
+                .padding(.top, 3)
             }
         }
         .padding()
@@ -83,6 +99,13 @@ struct ChargeBox: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
+    }
+
+    /// The limit as it is written above, in whichever unit it was set in.
+    private var chargeLimitText: String {
+        settings.chargeLimitMode == .stateOfCharge
+            ? "\(Int(settings.chargeLimitSOC.rounded()))%"
+            : String(format: "%.2f V", settings.chargeLimitVoltage)
     }
 
     private var voltageRange: ClosedRange<Double> {
