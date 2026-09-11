@@ -26,28 +26,32 @@ struct GPSView: View {
 
         VStack(spacing: 10) {
             ScrollView {
-                DialsView(settings: connection.settings,
-                          info: connection.info,
-                          recorder: recorder) {
-                    showingDialSettings = true
+                // One stack at the same 10pt the overview stacks its boxes at,
+                // rather than a top padding per box: the gap between the dials and
+                // the figures now matches every other screen's.
+                VStack(spacing: 10) {
+                    DialsView(settings: connection.settings,
+                              info: connection.info,
+                              recorder: recorder) {
+                        showingDialSettings = true
+                    }
+
+                    if allDialsShown && orientation.isPortrait {
+                        HintBanner(symbol: "iphone.landscape",
+                                   message: "Rotate your phone: three dials fit better in landscape.")
+                    }
+
+                    GPSListView(settings: connection.settings,
+                                info: connection.info,
+                                recorder: recorder)
+
+                    if recorder.authorizationDenied {
+                        HintBanner(symbol: "location.slash",
+                                   message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                    }
                 }
                 .padding(.top, 15)
-
-                if allDialsShown && orientation.isPortrait {
-                    HintBanner(symbol: "iphone.landscape",
-                               message: "Rotate your phone: three dials fit better in landscape.")
-                }
-
-                GPSListView(settings: connection.settings,
-                            info: connection.info,
-                            recorder: recorder)
-                    .padding(.top, 15)
-                    .padding(.bottom, 20)
-
-                if recorder.authorizationDenied {
-                    HintBanner(symbol: "location.slash",
-                               message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
-                }
+                .padding(.bottom, 20)
             }
 
             HStack(alignment: .center) {
@@ -103,6 +107,8 @@ private struct HintBanner: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
+        // The same gutter the two boxes take, since a hint sits between them.
+        .padding(.horizontal, 15)
     }
 }
 
@@ -281,6 +287,17 @@ private struct GPSListView: View {
                     }
                     .frame(minHeight: 44)
                     Divider()
+                    if let hottest = info.temperatures.max() {
+                        LabeledContent("Max temperature") {
+                            HStack(spacing: 6) {
+                                IndicatorLight(tint: .packTemperature(hottest))
+                                Text(info.temperatureText(hottest))
+                                    .monospacedDigit()
+                            }
+                        }
+                        .frame(minHeight: 44)
+                        Divider()
+                    }
                     if !settings.showRangeDial {
                         row("Remaining range", recorder.estimatedRangeText)
                         Divider()
@@ -302,5 +319,22 @@ private struct GPSListView: View {
     private func row(_ title: String, _ value: String) -> some View {
         LabeledContent(title, value: value)
             .frame(minHeight: 44)
+    }
+}
+
+/// A small coloured light, haloed so it reads as an indicator rather than as a
+/// bullet point in front of the figure.
+private struct IndicatorLight: View {
+    let tint: Color
+
+    var body: some View {
+        Circle()
+            .fill(tint)
+            .frame(width: 9, height: 9)
+            .overlay {
+                Circle().stroke(tint.opacity(0.3), lineWidth: 3.5)
+            }
+            .frame(width: 16, height: 16)
+            .animation(.easeInOut(duration: 0.4), value: tint)
     }
 }

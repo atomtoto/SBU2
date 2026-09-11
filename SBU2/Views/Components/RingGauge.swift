@@ -59,4 +59,20 @@ extension Color {
     static func stateOfChargeTrip(_ percent: Int) -> Color {
         percent < 10 ? .red : percent < 30 ? .yellow : .green
     }
+
+    /// The indicator beside the pack's hottest sensor.
+    ///
+    /// Blue below freezing, which is its own kind of wrong rather than merely cold:
+    /// charging there plates lithium onto the anode instead of into it, and the pack
+    /// does not get that capacity back. Green through the range a pack is happy
+    /// working in, yellow where it is working hard, and red approaching the fifties,
+    /// which is about where a JBD pack's over-temperature protections are usually set.
+    static func packTemperature(_ celsius: Double) -> Color {
+        switch celsius {
+        case ..<0: .blue
+        case ..<35: .green
+        case ..<45: .yellow
+        default: .red
+        }
+    }
 }

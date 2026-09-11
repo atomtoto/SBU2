@@ -129,6 +129,8 @@ enum CellVoltageStyle: String, Codable, CaseIterable, Identifiable {
     /// Figures only, wrapped into as many columns as fit. What a long string of
     /// cells wants, since twenty-four bars do not fit on a phone worth reading.
     case compact
+    /// The same wrapped figures, each on its own pane of glass.
+    case compactAesthetic
     /// One wide bar per cell with the figure floating on top of it.
     case aesthetic
 
@@ -138,6 +140,7 @@ enum CellVoltageStyle: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .bars: return "Bars"
         case .compact: return "Compact"
+        case .compactAesthetic: return "Compact Aesthetic"
         case .aesthetic: return "Aesthetic"
         }
     }
@@ -146,6 +149,7 @@ enum CellVoltageStyle: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .bars: return "chart.bar.fill"
         case .compact: return "square.grid.3x3"
+        case .compactAesthetic: return "square.grid.2x2.fill"
         case .aesthetic: return "sparkles"
         }
     }

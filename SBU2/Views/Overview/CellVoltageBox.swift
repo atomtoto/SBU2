@@ -34,6 +34,7 @@ struct CellVoltageBox: View {
             switch settings.cellVoltageStyle(cellCount: cells.count) {
             case .bars: barsLayout
             case .compact: compactLayout
+            case .compactAesthetic: compactAestheticLayout
             case .aesthetic: aestheticLayout
             }
         }
@@ -110,6 +111,60 @@ struct CellVoltageBox: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    // MARK: - Figures, each on its own pane of glass
+
+    private var compactAestheticLayout: some View {
+        // Wider tiles than the plain compact grid, because each figure now carries a
+        // pane of its own and glass needs a margin to read as glass.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
+                  alignment: .leading,
+                  spacing: 8) {
+            ForEach(cells) { cell in
+                VStack(spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text("\(cell.index + 1)")
+                            .font(.caption2.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        if balancing.contains(cell.index) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    Text(cell.voltage.formatted(decimals: 3, unit: "V"))
+                        .font(.system(size: 15, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(tint(for: cell.index))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 6)
+                .background { pane(for: cell.index) }
+            }
+        }
+    }
+
+    /// Clear glass for most cells, tinted on the two the balancer is working on, so
+    /// the pair can still be picked out of a wall of identical panes.
+    @ViewBuilder
+    private func pane(for index: Int) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let accent = tint(for: index)
+        let isExtreme = accent != .primary
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(isExtreme ? .regular.tint(accent.opacity(0.25)) : .regular,
+                                    in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+                .overlay { shape.fill(isExtreme ? accent.opacity(0.15) : .clear) }
         }
     }
 
