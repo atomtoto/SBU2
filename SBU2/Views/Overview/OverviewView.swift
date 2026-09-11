@@ -451,7 +451,7 @@ private struct BatteryInfoBox: View {
                     }
                 }
                 if canClearAlerts {
-                    Divider()
+//                    Divider()
                     GlassPillButton(title: "Reset alerts",
                                     color: .red,
                                     symbol: "exclamationmark.triangle",
