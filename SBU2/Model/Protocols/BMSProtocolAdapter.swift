@@ -8,12 +8,14 @@ import Foundation
 
 /// The BMS families the app can talk to.
 ///
-/// Only JBD is implemented today. Everything above the transport goes through
-/// `BMSProtocolAdapter`, so adding a family means writing one adapter and listing its
-/// descriptor in `BMSProtocolRegistry`: neither `BMSConnection` nor any view names a
-/// protocol, a register or a frame layout.
+/// Everything above the transport goes through `BMSProtocolAdapter`, so adding a
+/// family means writing one adapter and listing its descriptor in
+/// `BMSProtocolRegistry`: neither `BMSConnection` nor any view names a protocol, a
+/// register or a frame layout. JK proved that out — it shares nothing with JBD but
+/// the shape of the adapter, down to the byte order.
 enum BMSProtocolID: String, Codable, CaseIterable, Identifiable, Sendable {
     case jbd
+    case jk
 
     var id: Self { self }
 }
@@ -160,7 +162,10 @@ struct BMSProtocolDescriptor {
 /// The families compiled into the app.
 enum BMSProtocolRegistry {
 
-    static let descriptors: [BMSProtocolDescriptor] = [JBDAdapter.descriptor]
+    /// JK first: its matcher is the strict one, and JBD's deliberately claims any
+    /// peripheral whose advertisement lists no services at all. With JBD first, a JK
+    /// pack that advertised nothing would be opened as a JBD one and answer nothing.
+    static let descriptors: [BMSProtocolDescriptor] = [JKAdapter.descriptor, JBDAdapter.descriptor]
 
     /// Used when nothing else matches, and as the type of any device stored before
     /// the app knew about more than one family.

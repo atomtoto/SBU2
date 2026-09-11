@@ -759,7 +759,10 @@ extension BMSConnection: CBPeripheralDelegate {
             abortConnection("Service \(profile.service.uuidString) not found on this device.")
             return
         }
-        peripheral.discoverCharacteristics([profile.notify, profile.write], for: service)
+        // Deduplicated because a family may use one characteristic for both.
+        var wanted = [profile.notify]
+        if profile.write != profile.notify { wanted.append(profile.write) }
+        peripheral.discoverCharacteristics(wanted, for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral,
@@ -768,15 +771,13 @@ extension BMSConnection: CBPeripheralDelegate {
         let profile = descriptor.profile
         var notifyCharacteristic: CBCharacteristic?
 
+        // Two independent questions rather than one switch: JK notifies and is
+        // written on the same characteristic, and a switch answers only the first
+        // case that matches — which left the write characteristic nil and aborted
+        // the connection on exactly the packs that share one.
         for characteristic in service.characteristics ?? [] {
-            switch characteristic.uuid {
-            case profile.notify:
-                notifyCharacteristic = characteristic
-            case profile.write:
-                writeCharacteristic = characteristic
-            default:
-                break
-            }
+            if characteristic.uuid == profile.notify { notifyCharacteristic = characteristic }
+            if characteristic.uuid == profile.write { writeCharacteristic = characteristic }
         }
 
         guard writeCharacteristic != nil else {

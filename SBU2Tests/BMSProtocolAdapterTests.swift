@@ -3,6 +3,7 @@
 //  SBU2Tests
 //
 
+import CoreBluetooth
 import Foundation
 import Testing
 @testable import SBU2
@@ -219,6 +220,52 @@ struct BMSProtocolRegistryTests {
     @Test("A stored identifier resolves to its family")
     func lookupByID() {
         #expect(BMSProtocolRegistry.descriptor(for: .jbd).id == .jbd)
+        #expect(BMSProtocolRegistry.descriptor(for: .jk).id == .jk)
+    }
+
+    @Test("Both families are scanned for")
+    func scansBoth() {
+        let services = BMSProtocolRegistry.scanServices
+        #expect(services.contains(JBDAdapter.descriptor.profile.service))
+        #expect(services.contains(JKAdapter.descriptor.profile.service))
+    }
+
+    @Test("Each family claims its own and leaves the other alone")
+    func familiesDoNotStealEachOther() {
+        let jk = BMSProtocolRegistry.descriptor(
+            advertisement: [CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "FFE0")]],
+            name: "JK-B2A16S")
+        #expect(jk.id == .jk)
+
+        let jbd = BMSProtocolRegistry.descriptor(
+            advertisement: [CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "FF00")]],
+            name: "xiaoxiang BMS")
+        #expect(jbd.id == .jbd)
+    }
+
+    @Test("A JK pack is recognised by either its service or its name")
+    func jkRecognisedEitherWay() {
+        // No name in the advertisement, which is common enough.
+        let byService = BMSProtocolRegistry.descriptor(
+            advertisement: [CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "FFE0")]],
+            name: nil)
+        #expect(byService.id == .jk)
+
+        // Services in the scan response rather than the advertisement, which is also
+        // common — the name is all there is to go on.
+        let byName = BMSProtocolRegistry.descriptor(advertisement: [:], name: "JK_PB2A16S15P")
+        #expect(byName.id == .jk)
+    }
+
+    @Test("JK and JBD talk over different characteristics, and JK over only one")
+    func profiles() {
+        let jk = JKAdapter.descriptor.profile
+        // One characteristic both ways, which the GATT discovery has to allow for.
+        #expect(jk.notify == jk.write)
+
+        let jbd = JBDAdapter.descriptor.profile
+        #expect(jbd.notify != jbd.write)
+        #expect(jk.service != jbd.service)
     }
 }
 
