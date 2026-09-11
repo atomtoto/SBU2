@@ -52,6 +52,14 @@ enum JK {
         }
     }
 
+    /// The holding registers worth writing to. Both take a four-byte value that is
+    /// one or zero, and neither is a stored setting — they are the terminals
+    /// themselves, which is why they are the only writes this family offers.
+    enum Register: UInt8 {
+        case chargingSwitch = 0x1D
+        case dischargingSwitch = 0x1E
+    }
+
     /// A sum of bytes truncated to eight bits. Not a CRC, despite the name it goes by
     /// in every implementation of this protocol.
     static func checksum<Bytes: Sequence>(_ bytes: Bytes) -> UInt8 where Bytes.Element == UInt8 {
@@ -64,13 +72,13 @@ enum JK {
     /// Reads carry no value, so all that is left of it is zeros — but the length byte
     /// and the four value bytes are still part of the frame and still counted into the
     /// checksum, so they are written out rather than left implied.
-    static func request(_ command: Command, value: UInt32 = 0, valueLength: UInt8 = 0) -> [UInt8] {
+    static func frame(address: UInt8, value: UInt32 = 0, valueLength: UInt8 = 0) -> [UInt8] {
         var frame = [UInt8](repeating: 0, count: 20)
         frame[0] = 0xAA
         frame[1] = 0x55
         frame[2] = 0x90
         frame[3] = 0xEB
-        frame[4] = command.rawValue
+        frame[4] = address
         frame[5] = valueLength
         frame[6] = UInt8(truncatingIfNeeded: value)
         frame[7] = UInt8(truncatingIfNeeded: value >> 8)
@@ -78,6 +86,17 @@ enum JK {
         frame[9] = UInt8(truncatingIfNeeded: value >> 24)
         frame[19] = checksum(frame[0..<19])
         return frame
+    }
+
+    /// Asks for one of the two frames worth reading. Carries no value.
+    static func request(_ command: Command) -> [UInt8] {
+        frame(address: command.rawValue)
+    }
+
+    /// Opens or closes one of the terminals. The value is four bytes wide even though
+    /// only its lowest bit means anything, which is what the reference writes.
+    static func write(_ register: Register, on: Bool) -> [UInt8] {
+        frame(address: register.rawValue, value: on ? 1 : 0, valueLength: 4)
     }
 
     // MARK: - Which layout the pack is speaking

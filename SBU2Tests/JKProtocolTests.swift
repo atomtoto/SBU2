@@ -92,6 +92,22 @@ struct JKRequestTests {
         #expect(deviceInfo[19] == 0x11)
     }
 
+    @Test("Switching a terminal is one register, four bytes wide, and its own sum")
+    func switchFrames() {
+        #expect(Array(JK.write(.chargingSwitch, on: true).prefix(7))
+                == [0xAA, 0x55, 0x90, 0xEB, 0x1D, 0x04, 0x01])
+        #expect(JK.write(.chargingSwitch, on: true)[19] == 0x9C)
+        #expect(JK.write(.chargingSwitch, on: false)[19] == 0x9B)
+
+        #expect(Array(JK.write(.dischargingSwitch, on: true).prefix(7))
+                == [0xAA, 0x55, 0x90, 0xEB, 0x1E, 0x04, 0x01])
+        #expect(JK.write(.dischargingSwitch, on: true)[19] == 0x9D)
+        #expect(JK.write(.dischargingSwitch, on: false)[19] == 0x9C)
+
+        // The two terminals are separate registers, unlike JBD's single one.
+        #expect(JK.write(.chargingSwitch, on: true) != JK.write(.dischargingSwitch, on: true))
+    }
+
     @Test("The checksum wraps rather than trapping")
     func checksumWraps() {
         #expect(JK.checksum([0xFF, 0x02]) == 0x01)
@@ -331,21 +347,43 @@ struct JKFrameAssemblerTests {
 @Suite("JK adapter")
 struct JKAdapterTests {
 
-    @Test("Nothing is written to a JK pack yet, and it says so rather than sending nothing quietly")
-    func writesNothing() {
+    @Test("The terminals can be switched; the pack's settings still cannot")
+    func writesOnlyTheTerminals() {
         let adapter = JKAdapter()
-        #expect(!adapter.supportsMOSControl)
+        #expect(adapter.supportsMOSControl)
         #expect(!adapter.supportsPasswordManagement)
         #expect(!adapter.supportsClearingAlerts)
         #expect(!adapter.supportsCalibration)
-        #expect(adapter.mosCommands(charge: true, discharge: true, password: nil).isEmpty)
         #expect(adapter.clearAlertsCommands(password: nil).isEmpty)
         #expect(adapter.calibrationCommands(.idleCurrent, password: nil).isEmpty)
     }
 
-    @Test("The pack is asked who it is until it answers, and for readings every round")
-    func pollsForIdentityOnce() {
+    @Test("Switching a terminal writes both registers, and expects no answer to either")
+    func mosWrites() {
+        let commands = JKAdapter().mosCommands(charge: true, discharge: false, password: nil)
+        #expect(commands.count == 2)
+        #expect(commands[0].bytes == JK.write(.chargingSwitch, on: true))
+        #expect(commands[1].bytes == JK.write(.dischargingSwitch, on: false))
+        // The pack acknowledges nothing; the next streamed reading is the receipt.
+        #expect(commands.map(\.expectedRegister) == [nil, nil])
+        #expect(commands.map(\.isPoll) == [false, false])
+    }
+
+    @Test("A password is not sent because the protocol has nowhere to put one")
+    func noPasswordInTheWrite() {
+        // Same bytes with a password as without. The reference writes these registers
+        // with no authentication of any kind, and there is no unlock frame to send.
+        let withPassword = JKAdapter().mosCommands(charge: true, discharge: true, password: "1234")
+        let without = JKAdapter().mosCommands(charge: true, discharge: true, password: nil)
+        #expect(withPassword.map(\.bytes) == without.map(\.bytes))
+        #expect(!JKAdapter().isValidPassword("1234"))
+    }
+
+    @Test("The pack is asked once and then left alone, because every command makes it beep")
+    func stopsAskingOnceStreaming() {
         let adapter = JKAdapter()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        adapter.now = { clock }
 
         let first = adapter.pollCommands()
         #expect(first.count == 2)
@@ -353,8 +391,50 @@ struct JKAdapterTests {
         #expect(first[1].expectedRegister == JK.FrameType.cellInfo.rawValue)
         #expect(first.map(\.isPoll) == [true, true])
 
-        // Still asking, because nothing has come back.
-        #expect(adapter.pollCommands().count == 2)
+        // A second later, nothing has come back — but it was only just asked, so it
+        // is not asked again. This is the difference between two beeps and a beep
+        // every second.
+        clock = clock.addingTimeInterval(1)
+        #expect(adapter.pollCommands().isEmpty)
+
+        // The pack answers and starts streaming, and keeps streaming.
+        for round in 0..<4 {
+            for chunk in stride(from: 0, to: 300, by: 20).map({
+                Data(Fixtures.cellInfo24[$0..<min($0 + 20, 300)])
+            }) {
+                _ = adapter.ingest(chunk)
+            }
+            // A second of silence between readings, as a real pack streams.
+            clock = clock.addingTimeInterval(1)
+            #expect(adapter.pollCommands().isEmpty, "asked again on round \(round)")
+        }
+    }
+
+    @Test("A stream that dries up is asked again")
+    func asksAgainWhenTheStreamStops() {
+        let adapter = JKAdapter()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        adapter.now = { clock }
+        _ = adapter.pollCommands()
+
+        for chunk in stride(from: 0, to: 300, by: 20).map({
+            Data(Fixtures.cellInfo24[$0..<min($0 + 20, 300)])
+        }) {
+            _ = adapter.ingest(chunk)
+        }
+
+        // Still talking a moment later: left alone.
+        clock = clock.addingTimeInterval(2)
+        #expect(adapter.pollCommands().isEmpty)
+
+        // Gone quiet for longer than the pack is given: asked again.
+        clock = clock.addingTimeInterval(10)
+        let resumed = adapter.pollCommands().map(\.expectedRegister)
+        #expect(resumed.contains(JK.FrameType.cellInfo.rawValue))
+
+        // And not again straight afterwards, even though it is still quiet.
+        clock = clock.addingTimeInterval(1)
+        #expect(adapter.pollCommands().isEmpty)
     }
 
     @Test("A frame whose layout cannot be settled still produces a reading")
