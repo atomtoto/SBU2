@@ -53,37 +53,12 @@ final class AppSettings {
     /// user dismisses the warning with "Don't warn me again".
     var showMOSFETWarning = true
 
-    /// How the two customisable overview boxes are drawn, or `nil` for whatever
-    /// they would choose on their own.
-    ///
-    /// Optional for the same reason the device settings are: the synthesized decoder
-    /// throws on a key that is not in the stored JSON even when the property has a
-    /// default, and `init` answers a throw by keeping the factory values — so a plain
-    /// new field would quietly reset every preference already stored. Read the first
-    /// through `overviewStyle`; the second stays optional all the way to the menu,
-    /// where `nil` is the "Automatic" row.
-    var storedOverviewStyle: OverviewStyle?
-    var storedCellVoltageStyle: CellVoltageStyle?
-
-    var overviewStyle: OverviewStyle {
-        get { storedOverviewStyle ?? .ring }
-        set { storedOverviewStyle = newValue }
-    }
-
-    /// The style a pack of this many cells should be drawn in, honouring the choice
-    /// if one was made and falling back to what suits the length of the string.
-    func cellVoltageStyle(cellCount: Int) -> CellVoltageStyle {
-        storedCellVoltageStyle ?? .automatic(cellCount: cellCount)
-    }
-
     struct Snapshot: Codable, Equatable {
         var showDemoDevice = true
         var capacityUnit: CapacityUnit = .ampereHours
         var keepScreenAwake = false
         var appearance: Appearance = .system
         var showMOSFETWarning = true
-        var storedOverviewStyle: OverviewStyle?
-        var storedCellVoltageStyle: CellVoltageStyle?
     }
 
     /// Equatable view of the settings, so a single `onChange` can drive persistence.
@@ -92,9 +67,7 @@ final class AppSettings {
                  capacityUnit: capacityUnit,
                  keepScreenAwake: keepScreenAwake,
                  appearance: appearance,
-                 showMOSFETWarning: showMOSFETWarning,
-                 storedOverviewStyle: storedOverviewStyle,
-                 storedCellVoltageStyle: storedCellVoltageStyle)
+                 showMOSFETWarning: showMOSFETWarning)
     }
 
     init() {
@@ -105,8 +78,6 @@ final class AppSettings {
         keepScreenAwake = stored.keepScreenAwake
         appearance = stored.appearance
         showMOSFETWarning = stored.showMOSFETWarning
-        storedOverviewStyle = stored.storedOverviewStyle
-        storedCellVoltageStyle = stored.storedCellVoltageStyle
     }
 
     func persist() {
@@ -347,6 +318,23 @@ struct DeviceSettings: Codable, Equatable {
     /// The icon chosen for this device, or `nil` while it still wears the default.
     /// Optional for the decode reason given above.
     var storedIcon: DeviceIcon?
+
+    /// How this pack's two customisable overview boxes are drawn. Optional for the
+    /// same decode reason, and because `nil` genuinely means something for the
+    /// second one: it is the "Automatic" row, which resolves against the cell count.
+    var storedOverviewStyle: OverviewStyle?
+    var storedCellVoltageStyle: CellVoltageStyle?
+
+    var overviewStyle: OverviewStyle {
+        get { storedOverviewStyle ?? .ring }
+        set { storedOverviewStyle = newValue }
+    }
+
+    /// The style a string of this many cells should be drawn in, honouring the choice
+    /// if one was made and falling back to what suits the length of the string.
+    func cellVoltageStyle(cellCount: Int) -> CellVoltageStyle {
+        storedCellVoltageStyle ?? .automatic(cellCount: cellCount)
+    }
 
     /// What to draw for this device, chosen or not.
     func icon(isDemo: Bool) -> DeviceIcon {

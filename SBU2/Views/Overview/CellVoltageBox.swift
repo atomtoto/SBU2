@@ -17,10 +17,9 @@ struct CellVoltageBox: View {
     let voltages: [Double]
     let balancing: Set<Int>
     let summary: CellSummary?
-    let emptyMillivolts: Double
-    let fullMillivolts: Double
-
-    @Environment(AppSettings.self) private var appSettings
+    /// This pack's own settings: the style it is drawn in, and the two voltages the
+    /// bars are scaled between.
+    @Binding var settings: DeviceSettings
 
     /// One populated cell. A struct rather than a tuple so `ForEach` has something
     /// to identify rows by when unpopulated cells are filtered out.
@@ -31,10 +30,8 @@ struct CellVoltageBox: View {
     }
 
     var body: some View {
-        @Bindable var appSettings = appSettings
-
         Card {
-            switch appSettings.cellVoltageStyle(cellCount: cells.count) {
+            switch settings.cellVoltageStyle(cellCount: cells.count) {
             case .bars: barsLayout
             case .compact: compactLayout
             case .aesthetic: aestheticLayout
@@ -43,7 +40,7 @@ struct CellVoltageBox: View {
         .animation(.easeInOut(duration: 0.4), value: summary?.lowestIndex)
         .animation(.easeInOut(duration: 0.4), value: summary?.highestIndex)
         .contextMenu {
-            Picker("Cell voltage style", selection: $appSettings.storedCellVoltageStyle) {
+            Picker("Cell voltage style", selection: $settings.storedCellVoltageStyle) {
                 Label("Automatic", systemImage: "wand.and.rays")
                     .tag(CellVoltageStyle?.none)
                 ForEach(CellVoltageStyle.allCases) { style in
@@ -181,9 +178,10 @@ struct CellVoltageBox: View {
     }
 
     private func fraction(for voltage: Double) -> Double {
-        let span = fullMillivolts - emptyMillivolts
+        let empty = Double(settings.cellEmptyVoltage)
+        let span = Double(settings.cellFullVoltage) - empty
         guard span > 0 else { return 0 }
-        return max(0, min((voltage * 1000 - emptyMillivolts) / span, 1))
+        return max(0, min((voltage * 1000 - empty) / span, 1))
     }
 }
 

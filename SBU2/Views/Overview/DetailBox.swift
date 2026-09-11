@@ -18,23 +18,20 @@ import UIKit
 struct DetailBox: View {
     let info: BasicInfo
     let capacityUnit: CapacityUnit
-    /// Full scale for the power meter. The same figure that calibrates the power dial
-    /// on the GPS screen, so a pack only has to be told once what "a lot" means for it.
-    let expectedPower: Int
-
-    @Environment(AppSettings.self) private var appSettings
+    /// This pack's own settings: the style it is drawn in, and the power the meter
+    /// is scaled against — the same figure that calibrates the power dial on the GPS
+    /// screen, so a pack only has to be told once what "a lot" means for it.
+    @Binding var settings: DeviceSettings
 
     var body: some View {
-        @Bindable var appSettings = appSettings
-
         Card {
-            switch appSettings.overviewStyle {
+            switch settings.overviewStyle {
             case .ring: ringLayout
             case .bars: barLayout
             }
         }
         .contextMenu {
-            Picker("Info box style", selection: $appSettings.overviewStyle) {
+            Picker("Info box style", selection: $settings.overviewStyle) {
                 ForEach(OverviewStyle.allCases) { style in
                     Label(style.label, systemImage: style.symbol).tag(style)
                 }
@@ -137,8 +134,8 @@ struct DetailBox: View {
     /// against if that was never set, so the bar stays empty rather than inventing a
     /// scale.
     private var powerFraction: Double {
-        guard expectedPower > 0 else { return 0 }
-        return min(abs(info.power) / Double(expectedPower), 1)
+        guard settings.expectedPower > 0 else { return 0 }
+        return min(abs(info.power) / Double(settings.expectedPower), 1)
     }
 
     /// The row says which way the current is going; the fill direction says it again.

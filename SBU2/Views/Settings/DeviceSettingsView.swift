@@ -167,21 +167,17 @@ struct DialsSettingsView: View {
 struct OverviewSettingsView: View {
     @Binding var settings: DeviceSettings
 
-    @Environment(AppSettings.self) private var appSettings
-
     var body: some View {
-        @Bindable var appSettings = appSettings
-
         Form {
             // The same two choices the boxes themselves offer on a long press. Kept
             // here as well because a long press advertises itself to nobody.
             Section {
-                Picker("Info box", selection: $appSettings.overviewStyle) {
+                Picker("Info box", selection: $settings.overviewStyle) {
                     ForEach(OverviewStyle.allCases) { style in
                         Label(style.label, systemImage: style.symbol).tag(style)
                     }
                 }
-                Picker("Cell voltages", selection: $appSettings.storedCellVoltageStyle) {
+                Picker("Cell voltages", selection: $settings.storedCellVoltageStyle) {
                     Label("Automatic", systemImage: "wand.and.rays")
                         .tag(CellVoltageStyle?.none)
                     ForEach(CellVoltageStyle.allCases) { style in

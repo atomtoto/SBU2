@@ -23,7 +23,7 @@ struct OverviewView: View {
             LazyVStack(spacing: 10) {
                 DetailBox(info: connection.info,
                           capacityUnit: appSettings.capacityUnit,
-                          expectedPower: connection.settings.expectedPower)
+                          settings: $connection.settings)
                     .padding(.top, 5)
                 ButtonBox(info: connection.info,
                           settings: connection.settings,
@@ -47,8 +47,7 @@ struct OverviewView: View {
                     CellVoltageBox(voltages: connection.cellVoltages,
                                    balancing: connection.info.balancingCells,
                                    summary: connection.cellSummary,
-                                   emptyMillivolts: Double(connection.settings.cellEmptyVoltage),
-                                   fullMillivolts: Double(connection.settings.cellFullVoltage))
+                                   settings: $connection.settings)
                 }
                 BatteryInfoBox(info: connection.info,
                                offersClearingAlerts: connection.offersClearingAlerts,
@@ -333,6 +332,12 @@ private struct BatteryInfoBox: View {
                         confirmingClear = true
                     }
                     .padding(.top, 2)
+                    // The pill is drawn 36pt tall inside a 44pt tap target, so there
+                    // is a band of empty target under it before the card's own
+                    // padding even starts. Taking that back closes the gap the button
+                    // was floating in — but not when the outcome note follows it,
+                    // which needs the room.
+                    .padding(.bottom, showingOutcome ? 0 : -8)
                     if showingOutcome {
                         outcomeNote
                     }

@@ -40,9 +40,53 @@ struct DeviceSettingsTests {
         #expect(settings.cellFullVoltage == 3650)
         #expect(settings.refillLaterEnabled)
 
-        // Both settings added later read as the behaviour that came before them.
+        // Every setting added later reads as the behaviour that came before it.
         #expect(settings.protocolID == nil)
         #expect(settings.refillTarget == .chargeLimit)
+        #expect(settings.storedIcon == nil)
+        #expect(settings.overviewStyle == .ring)
+        #expect(settings.storedCellVoltageStyle == nil)
+    }
+
+    @Test("Every kind of icon survives being written and read back")
+    func iconRoundTrips() throws {
+        for icon: DeviceIcon in [.symbol("car.fill"), .emoji("🚐"), .glyph(Data([0x1, 0x2, 0x3]))] {
+            var settings = DeviceSettings()
+            settings.storedIcon = icon
+            let decoded = try JSONDecoder().decode(DeviceSettings.self,
+                                                   from: JSONEncoder().encode(settings))
+            #expect(decoded.storedIcon == icon)
+        }
+    }
+
+    @Test("A long string of cells opens on the figures, a short one on the bars")
+    func automaticCellVoltageStyle() {
+        var settings = DeviceSettings()
+        // Nothing chosen: the pack's own length decides, on either side of twenty.
+        #expect(settings.cellVoltageStyle(cellCount: 4) == .bars)
+        #expect(settings.cellVoltageStyle(cellCount: 20) == .bars)
+        #expect(settings.cellVoltageStyle(cellCount: 21) == .compact)
+
+        // Chosen: the choice holds however many cells there are.
+        settings.storedCellVoltageStyle = .aesthetic
+        #expect(settings.cellVoltageStyle(cellCount: 4) == .aesthetic)
+        #expect(settings.cellVoltageStyle(cellCount: 24) == .aesthetic)
+    }
+
+    @Test("Styles are per device, so one pack's choice is not another's")
+    func stylesAreNotShared() throws {
+        var van = DeviceSettings()
+        van.overviewStyle = .bars
+        van.storedCellVoltageStyle = .compact
+
+        let shed = DeviceSettings()
+        #expect(shed.overviewStyle == .ring)
+        #expect(shed.storedCellVoltageStyle == nil)
+
+        let decoded = try JSONDecoder().decode(DeviceSettings.self,
+                                               from: JSONEncoder().encode(van))
+        #expect(decoded.overviewStyle == .bars)
+        #expect(decoded.storedCellVoltageStyle == .compact)
     }
 
     @Test("The chosen refill target survives being written and read back")
