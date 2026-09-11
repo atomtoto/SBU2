@@ -26,15 +26,19 @@ final class JKAdapter: BMSProtocolAdapter {
         profile: BMSGATTProfile(service: JKAdapter.serviceUUID,
                                 notify: JKAdapter.characteristicUUID,
                                 write: JKAdapter.characteristicUUID),
-        // Stricter than JBD's matcher on purpose, and listed ahead of it: FFE0 is the
-        // stock service of half the serial-over-BLE modules ever made, so claiming
-        // everything that advertises it would be claiming other people's hardware.
-        // An advertisement with no service list is left to JBD, which takes those.
+        // A JK pack is recognised three ways, because which of them a given module
+        // offers varies: by the service it advertises, by the service it lists only
+        // in its scan response (iOS reports those separately, under the overflow
+        // key), or by a name beginning "JK", which every one of them uses. Any one is
+        // enough — a module that advertises nothing but its name is still findable.
         matches: { advertisement, name in
             if let name, name.uppercased().hasPrefix("JK") { return true }
-            guard let advertised = advertisement[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]
-            else { return false }
-            return advertised.contains(JKAdapter.serviceUUID)
+            let keys = [CBAdvertisementDataServiceUUIDsKey,
+                        CBAdvertisementDataOverflowServiceUUIDsKey,
+                        CBAdvertisementDataSolicitedServiceUUIDsKey]
+            return keys.contains { key in
+                (advertisement[key] as? [CBUUID])?.contains(JKAdapter.serviceUUID) ?? false
+            }
         },
         make: { JKAdapter() })
 

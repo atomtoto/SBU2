@@ -204,14 +204,25 @@ struct JBDAdapterTests {
 @Suite("Protocol registry")
 struct BMSProtocolRegistryTests {
 
-    @Test("Every family is scanned for, each service listed once")
-    func scanServices() {
-        let services = BMSProtocolRegistry.scanServices
+    @Test("Every family's service is listed once")
+    func identifyingServices() {
+        let services = BMSProtocolRegistry.identifyingServices
         #expect(services.count == Set(services).count)
         #expect(services.contains(JBDAdapter.descriptor.profile.service))
     }
 
-    @Test("An unrecognised advertisement falls back rather than dropping the device")
+    @Test("A device no family recognises is not one of ours")
+    func matchesNothing() {
+        // The scan is unfiltered, so everything in radio range is offered up. A
+        // matcher that answered anything here would fill the list with headphones.
+        #expect(BMSProtocolRegistry.match(advertisement: [:], name: nil) == nil)
+        #expect(BMSProtocolRegistry.match(advertisement: [:], name: "AirPods Pro") == nil)
+        #expect(BMSProtocolRegistry.match(
+            advertisement: [CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "180D")]],
+            name: "Heart Rate Monitor") == nil)
+    }
+
+    @Test("Naming a family anyway falls back rather than refusing")
     func fallback() {
         let descriptor = BMSProtocolRegistry.descriptor(advertisement: [:], name: nil)
         #expect(descriptor.id == BMSProtocolRegistry.fallback.id)
@@ -223,11 +234,33 @@ struct BMSProtocolRegistryTests {
         #expect(BMSProtocolRegistry.descriptor(for: .jk).id == .jk)
     }
 
-    @Test("Both families are scanned for")
-    func scansBoth() {
-        let services = BMSProtocolRegistry.scanServices
+    @Test("Both families are identifiable by their own service")
+    func bothIdentifiable() {
+        let services = BMSProtocolRegistry.identifyingServices
         #expect(services.contains(JBDAdapter.descriptor.profile.service))
         #expect(services.contains(JKAdapter.descriptor.profile.service))
+    }
+
+    @Test("A JBD dongle is recognised by its service and nothing else is taken for one")
+    func jbdIsRecognisedStrictly() {
+        let jbd = BMSProtocolRegistry.match(
+            advertisement: [CBAdvertisementDataServiceUUIDsKey: [CBUUID(string: "FF00")]],
+            name: nil)
+        #expect(jbd?.id == .jbd)
+
+        // This used to be claimed as JBD, back when the scan filter meant anything
+        // reaching the matcher was already one. Unfiltered, that same answer would
+        // take every device in the building — and would take a JK pack before JK ever
+        // saw it.
+        #expect(BMSProtocolRegistry.match(advertisement: [:], name: "Some BMS") == nil)
+    }
+
+    @Test("A JK pack that lists its service only in the scan response is still found")
+    func jkFromOverflow() {
+        let overflow = BMSProtocolRegistry.match(
+            advertisement: [CBAdvertisementDataOverflowServiceUUIDsKey: [CBUUID(string: "FFE0")]],
+            name: nil)
+        #expect(overflow?.id == .jk)
     }
 
     @Test("Each family claims its own and leaves the other alone")

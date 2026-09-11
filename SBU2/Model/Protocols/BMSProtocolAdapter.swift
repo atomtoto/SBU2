@@ -154,7 +154,12 @@ struct BMSProtocolDescriptor {
     var id: BMSProtocolID
     var label: String
     var profile: BMSGATTProfile
-    /// Whether this family claims a peripheral, given what it advertises.
+    /// Whether this family recognises a peripheral from what it advertises.
+    ///
+    /// This has to be a *positive* identification and never a catch-all: the scan no
+    /// longer filters on service, so everything within radio range is offered here,
+    /// and a matcher that says yes to anything would fill the device list with
+    /// headphones.
     var matches: (_ advertisement: [String: Any], _ name: String?) -> Bool
     var make: () -> any BMSProtocolAdapter
 }
@@ -171,8 +176,10 @@ enum BMSProtocolRegistry {
     /// the app knew about more than one family.
     static var fallback: BMSProtocolDescriptor { JBDAdapter.descriptor }
 
-    /// The services to scan for: every family's, listed once.
-    static var scanServices: [CBUUID] {
+    /// The services that identify a family, listed once. Not a scan filter any more —
+    /// see `BMSConnection.startScanning` for why — but still what a peripheral is
+    /// recognised by.
+    static var identifyingServices: [CBUUID] {
         var services: [CBUUID] = []
         for descriptor in descriptors where !services.contains(descriptor.profile.service) {
             services.append(descriptor.profile.service)
@@ -184,8 +191,18 @@ enum BMSProtocolRegistry {
         descriptors.first { $0.id == id } ?? fallback
     }
 
-    /// The family a freshly discovered peripheral belongs to.
+    /// The family a peripheral belongs to, or `nil` if it is not one of ours.
+    ///
+    /// Answering `nil` is the point: discovery shows a device only when some family
+    /// recognises it, so this is what keeps every other BLE device in the building
+    /// out of the list.
+    static func match(advertisement: [String: Any], name: String?) -> BMSProtocolDescriptor? {
+        descriptors.first { $0.matches(advertisement, name) }
+    }
+
+    /// The family a freshly discovered peripheral belongs to, falling back rather
+    /// than refusing. For callers that have to name one either way.
     static func descriptor(advertisement: [String: Any], name: String?) -> BMSProtocolDescriptor {
-        descriptors.first { $0.matches(advertisement, name) } ?? fallback
+        match(advertisement: advertisement, name: name) ?? fallback
     }
 }

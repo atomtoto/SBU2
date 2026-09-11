@@ -217,7 +217,12 @@ final class BMSConnection: NSObject {
         refreshDemoEntry()
         guard central.state == .poweredOn else { return }
         status = .scanning
-        central.scanForPeripherals(withServices: BMSProtocolRegistry.scanServices)
+        // Deliberately unfiltered. A service filter only ever sees a peripheral that
+        // puts that service in its advertisement, and plenty of BMS modules advertise
+        // nothing but their name — those were invisible, not merely unrecognised.
+        // Everything in range arrives here now and is matched by `didDiscover`, which
+        // applies the same test the filter did and a couple more besides.
+        central.scanForPeripherals(withServices: nil)
     }
 
     /// The device to open automatically, if the user asked for one.
@@ -237,9 +242,12 @@ final class BMSConnection: NSObject {
         openDeviceID = device.id
         settings = DeviceSettingsStore.load(device.id)
 
-        // A device remembers the family it was opened with; a new one takes whatever
-        // its advertisement matched.
-        protocolID = settings.protocolID ?? device.protocolID
+        // What it is advertising now wins over what it was last opened as. The stored
+        // value used to win, which meant one wrong guess stuck to a device forever:
+        // the first open saves the family it chose, so a pack opened once as the
+        // wrong one could never be opened as the right one again, however much the
+        // matching improved. It is still recorded below, but only as a record.
+        protocolID = device.protocolID
         descriptor = BMSProtocolRegistry.descriptor(for: protocolID)
         adapter = descriptor.make()
         settings.protocolID = protocolID
@@ -703,7 +711,11 @@ extension BMSConnection: CBCentralManagerDelegate {
         let advertised = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
             ?? peripheral.name
             ?? "Unknown BMS"
-        let family = BMSProtocolRegistry.descriptor(advertisement: advertisementData, name: advertised)
+        // No family recognises it, so it is somebody's headphones. The scan is
+        // unfiltered now, so this is what keeps the list to packs.
+        guard let family = BMSProtocolRegistry.match(advertisement: advertisementData,
+                                                     name: advertised)
+        else { return }
         let device = DiscoveredBMS(id: peripheral.identifier.uuidString,
                                    name: advertised,
                                    rssi: RSSI.intValue,
@@ -721,7 +733,11 @@ extension BMSConnection: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         adapter.reset()
         notifying = false
-        peripheral.discoverServices([descriptor.profile.service])
+        // Every service rather than only the one expected: it costs one round trip,
+        // and it is the difference between "the service is missing" and being able to
+        // say what the device has instead — which, on hardware nobody here can see, is
+        // the difference between a fixable report and a shrug.
+        peripheral.discoverServices(nil)
     }
 
     func centralManager(_ central: CBCentralManager,
@@ -756,7 +772,8 @@ extension BMSConnection: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         let profile = descriptor.profile
         guard let service = peripheral.services?.first(where: { $0.uuid == profile.service }) else {
-            abortConnection("Service \(profile.service.uuidString) not found on this device.")
+            let found = (peripheral.services ?? []).map(\.uuid.uuidString)
+            abortConnection("\(descriptor.label) expects service \(profile.service.uuidString), which this device does not have. It offers: \(found.isEmpty ? "nothing" : found.joined(separator: ", ")).")
             return
         }
         // Deduplicated because a family may use one characteristic for both.
@@ -780,12 +797,15 @@ extension BMSConnection: CBPeripheralDelegate {
             if characteristic.uuid == profile.write { writeCharacteristic = characteristic }
         }
 
+        // Both messages name what the service actually carries, for the same reason
+        // the one above does.
+        let found = (service.characteristics ?? []).map(\.uuid.uuidString).joined(separator: ", ")
         guard writeCharacteristic != nil else {
-            abortConnection("Write characteristic \(profile.write.uuidString) not found.")
+            abortConnection("Write characteristic \(profile.write.uuidString) not found. This service has: \(found).")
             return
         }
         guard let notifyCharacteristic else {
-            abortConnection("Notify characteristic \(profile.notify.uuidString) not found.")
+            abortConnection("Notify characteristic \(profile.notify.uuidString) not found. This service has: \(found).")
             return
         }
         // Polling starts from didUpdateNotificationStateFor, once the subscription is

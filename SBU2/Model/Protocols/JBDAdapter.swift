@@ -21,13 +21,20 @@ final class JBDAdapter: BMSProtocolAdapter {
         profile: BMSGATTProfile(service: JBDAdapter.serviceUUID,
                                 notify: CBUUID(string: "FF01"),
                                 write: CBUUID(string: "FF02")),
-        // The scan already filters on FF00, but a dongle is free to put its service
-        // list in the scan response rather than the advertisement, so an
-        // advertisement that names no service still counts as a match.
+        // This used to answer yes to an advertisement that named no service at all,
+        // which was safe only while the scan itself filtered on FF00 — everything
+        // reaching it was already a JBD. The scan no longer filters, so that same
+        // answer would now claim every BLE device in radio range, and a JK pack that
+        // advertises no service would be opened as a JBD one and answer nothing.
+        //
+        // Nothing is lost by being strict: the old filtered scan required FF00 in the
+        // advertisement to see the device in the first place, so requiring it here
+        // finds exactly the same dongles. iOS folds scan-response services into the
+        // same key, so a dongle that answers with them rather than advertising them
+        // still arrives with FF00 listed.
         matches: { advertisement, _ in
-            guard let advertised = advertisement[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID],
-                  !advertised.isEmpty
-            else { return true }
+            guard let advertised = advertisement[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]
+            else { return false }
             return advertised.contains(JBDAdapter.serviceUUID)
         },
         make: { JBDAdapter() })
