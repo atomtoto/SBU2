@@ -397,17 +397,39 @@ struct JKAdapterTests {
         clock = clock.addingTimeInterval(1)
         #expect(adapter.pollCommands().isEmpty)
 
-        // The pack answers and starts streaming, and keeps streaming.
-        for round in 0..<4 {
+        // The pack answers and starts streaming, and keeps streaming. However long
+        // that goes on, it is never asked for readings again — which is the one that
+        // used to beep every second.
+        for round in 0..<30 {
             for chunk in stride(from: 0, to: 300, by: 20).map({
                 Data(Fixtures.cellInfo24[$0..<min($0 + 20, 300)])
             }) {
                 _ = adapter.ingest(chunk)
             }
-            // A second of silence between readings, as a real pack streams.
+            // A second between readings, as a real pack streams.
             clock = clock.addingTimeInterval(1)
-            #expect(adapter.pollCommands().isEmpty, "asked again on round \(round)")
+            let asked = adapter.pollCommands().map(\.expectedRegister)
+            #expect(!asked.contains(JK.FrameType.cellInfo.rawValue),
+                    "asked for readings again on round \(round)")
         }
+    }
+
+    @Test("A pack that will not say who it is stops being asked")
+    func givesUpOnTheIdentity() {
+        // Nothing here ever answers the device-info request. Asking forever would be
+        // a beep every few seconds for the rest of the session, in exchange for a
+        // version string.
+        let adapter = JKAdapter()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        adapter.now = { clock }
+
+        var asks = 0
+        for _ in 0..<20 {
+            asks += adapter.pollCommands()
+                .filter { $0.expectedRegister == JK.FrameType.deviceInfo.rawValue }.count
+            clock = clock.addingTimeInterval(5)
+        }
+        #expect(asks == 3)
     }
 
     @Test("A stream that dries up is asked again")

@@ -79,7 +79,8 @@ final class JKAdapter: BMSProtocolAdapter {
     /// Asking resumes if the stream dries up, which is what makes it safe to stop.
     func pollCommands() -> [BMSCommand] {
         var commands: [BMSCommand] = []
-        if identity == nil, !askedRecently(.deviceInfo) {
+        if identity == nil, identityAsks < Self.identityAttempts, !askedRecently(.deviceInfo) {
+            identityAsks += 1
             commands.append(poll(.deviceInfo))
         }
         if isStreamStale, !askedRecently(.cellInfo) {
@@ -87,6 +88,16 @@ final class JKAdapter: BMSProtocolAdapter {
         }
         return commands
     }
+
+    /// How many times a pack is asked who it is before the question is dropped.
+    ///
+    /// Unlike the readings, this one is given up on. All it supplies is the firmware
+    /// version and the build date, and neither is worth a beep every few seconds for
+    /// the rest of a session on a pack that has already declined to answer three
+    /// times. The readings are asked for again indefinitely because a screen without
+    /// them is no use at all; a screen without a version number is fine.
+    private static let identityAttempts = 3
+    private var identityAsks = 0
 
     /// Long enough that a pack streaming at its own pace is never interrupted, short
     /// enough that a stream which stops is noticed before the screen goes stale.
@@ -146,6 +157,7 @@ final class JKAdapter: BMSProtocolAdapter {
         // asked straight away rather than after the usual wait.
         lastCellInfo = nil
         lastAsked.removeAll()
+        identityAsks = 0
     }
 
     func ingest(_ data: Data) -> [BMSEvent] {
