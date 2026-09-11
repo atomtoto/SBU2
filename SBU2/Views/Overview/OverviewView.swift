@@ -21,7 +21,9 @@ struct OverviewView: View {
 
         ScrollView {
             LazyVStack(spacing: 10) {
-                DetailBox(info: connection.info, capacityUnit: appSettings.capacityUnit)
+                DetailBox(info: connection.info,
+                          capacityUnit: appSettings.capacityUnit,
+                          expectedPower: connection.settings.expectedPower)
                     .padding(.top, 5)
                 ButtonBox(info: connection.info,
                           settings: connection.settings,
@@ -111,42 +113,6 @@ struct MOSChange: Equatable {
     var isDisabling: Bool
     var question: String
     var confirmTitle: String
-}
-
-// MARK: - Detail box
-
-private struct DetailBox: View {
-    let info: BasicInfo
-    let capacityUnit: CapacityUnit
-
-    var body: some View {
-        Card {
-            HStack(alignment: .center, spacing: 20) {
-                RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                          tint: .stateOfChargeOverview(info.stateOfCharge)/*,
-                          glassArc: true*/) {
-                    Text(info.stateOfChargeText)
-                        .font(.system(size: 24, weight: .bold))
-                }
-                .frame(width: 140, height: 120)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 13) {
-                    Text(info.powerText)
-                        .font(.system(size: 19, weight: .bold))
-                    Text(info.currentText)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(info.voltageText)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(info.capacityText(unit: capacityUnit))
-                        .font(.system(size: 13, weight: .bold))
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
 }
 
 // MARK: - Charge / discharge buttons
@@ -307,104 +273,6 @@ private struct CellTemperatureBox: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
-    }
-}
-
-// MARK: - Per-cell voltages
-
-private struct CellVoltageBox: View {
-    let voltages: [Double]
-    let balancing: Set<Int>
-    let summary: CellSummary?
-    let emptyMillivolts: Double
-    let fullMillivolts: Double
-
-    /// One populated cell. A struct rather than a tuple so `ForEach` has something
-    /// to identify rows by when unpopulated cells are filtered out.
-    private struct Cell: Identifiable {
-        var index: Int
-        var voltage: Double
-        var id: Int { index }
-    }
-
-    var body: some View {
-        Card {
-            // A grid, not a stack of HStacks: every column is as wide as the widest
-            // cell in it, on every row, so the bars all start at the same place and
-            // sit on their own row's baseline. The old layout left the bar to fight
-            // two spacers for the leftover width and then pushed it 6pt down, which
-            // is why the bars looked like they belonged to the row below.
-            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                ForEach(cells) { cell in
-                    GridRow {
-                        Image(systemName: symbol(for: cell.index))
-                            .frame(width: 20, height: 20, alignment: .center)
-                            .rotationEffect(.degrees(-90))
-                        CircleNumber(number: cell.index + 1)
-                        Text(cell.voltage.formatted(decimals: 3, unit: "V"))
-                            .monospacedDigit()
-                            .foregroundStyle(tint(for: cell.index))
-                        Image(systemName: "bolt.fill")
-                            .frame(width: 20, height: 20)
-                            .opacity(balancing.contains(cell.index) ? 1 : 0)
-                            .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
-                        CellVoltageBar(fraction: fraction(for: cell.voltage))
-                    }
-                }
-            }
-            .animation(.easeInOut(duration: 0.4), value: summary?.lowestIndex)
-            .animation(.easeInOut(duration: 0.4), value: summary?.highestIndex)
-        }
-    }
-
-    private var cells: [Cell] {
-        voltages.enumerated().compactMap { index, voltage in
-            voltage > 0 ? Cell(index: index, voltage: voltage) : nil
-        }
-    }
-
-    private func symbol(for index: Int) -> String {
-        guard let summary else { return "battery.50" }
-        if index == summary.lowestIndex { return "battery.25" }
-        if index == summary.highestIndex { return "battery.75" }
-        return "battery.50"
-    }
-
-    /// Red on the weakest cell, green on the strongest — the two the balancer works
-    /// on. Nothing is tinted while every cell reads the same, so a pack at rest does
-    /// not pick an arbitrary pair.
-    private func tint(for index: Int) -> Color {
-        guard let summary, summary.highest > summary.lowest else { return .primary }
-        if index == summary.lowestIndex { return .red }
-        if index == summary.highestIndex { return .green }
-        return .primary
-    }
-
-    private func fraction(for voltage: Double) -> Double {
-        let span = fullMillivolts - emptyMillivolts
-        guard span > 0 else { return 0 }
-        return max(0, min((voltage * 1000 - emptyMillivolts) / span, 1))
-    }
-}
-
-private struct CellVoltageBar: View {
-    let fraction: Double
-
-    var body: some View {
-        // The track is what claims the width — a flexible shape takes whatever the
-        // grid column offers — and the fill reads that width back through an overlay.
-        Capsule()
-            .fill(Color.gray.opacity(0.3))
-            .frame(minWidth: 60, maxWidth: .infinity)
-            .frame(height: 11)
-            .overlay(alignment: .leading) {
-                GeometryReader { geometry in
-                    Capsule()
-                        .fill(Color.accentColor)
-                        .frame(width: geometry.size.width * max(0, min(fraction, 1)))
-                }
-            }
-            .animation(.easeInOut(duration: 0.4), value: fraction)
     }
 }
 

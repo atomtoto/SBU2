@@ -12,6 +12,12 @@ struct DeviceListView: View {
 
     @State private var opened: DiscoveredBMS?
     @State private var hasAutoConnected = false
+    /// The device whose icon is being chosen.
+    @State private var customising: DiscoveredBMS?
+    /// Icons picked in this session. The store behind them is plain `UserDefaults`,
+    /// which nothing observes, so a pick is held here too in order to reach the card
+    /// it was made on straight away.
+    @State private var pickedIcons: [String: DeviceIcon?] = [:]
 
     private let columns = [GridItem(.adaptive(minimum: 165), spacing: 12)]
 
@@ -33,8 +39,11 @@ struct DeviceListView: View {
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(connection.discovered) { device in
                                 DeviceCard(device: device,
-                                           name: connection.displayName(for: device)) {
+                                           name: connection.displayName(for: device),
+                                           icon: icon(for: device)) {
                                     open(device)
+                                } onCustomise: {
+                                    customising = device
                                 }
                             }
                         }
@@ -66,6 +75,13 @@ struct DeviceListView: View {
             .navigationDestination(item: $opened) { device in
                 DeviceTabsView(deviceName: connection.displayName(for: device))
             }
+            .sheet(item: $customising) { device in
+                DeviceIconPicker(deviceName: connection.displayName(for: device),
+                                 current: storedIcon(for: device),
+                                 defaultIcon: .standard(isDemo: device.isDemo)) { picked in
+                    setIcon(picked, for: device)
+                }
+            }
             .onChange(of: opened) { _, value in
                 if value == nil { connection.close() }
             }
@@ -75,6 +91,37 @@ struct DeviceListView: View {
             .onChange(of: connection.discovered) { _, _ in
                 autoConnectIfNeeded()
             }
+        }
+    }
+
+    // MARK: - Icons
+
+    /// What this device draws for itself, honouring a pick made a moment ago before
+    /// falling back to what is on disk.
+    private func icon(for device: DiscoveredBMS) -> DeviceIcon {
+        if let picked = pickedIcons[device.id] {
+            return picked ?? .standard(isDemo: device.isDemo)
+        }
+        return DeviceSettingsStore.load(device.id).icon(isDemo: device.isDemo)
+    }
+
+    /// The choice itself rather than the resolved icon: `nil` means "still on the
+    /// default", which is what the picker needs to know to offer putting it back.
+    private func storedIcon(for device: DiscoveredBMS) -> DeviceIcon? {
+        if let picked = pickedIcons[device.id] { return picked }
+        return DeviceSettingsStore.load(device.id).storedIcon
+    }
+
+    private func setIcon(_ icon: DeviceIcon?, for device: DiscoveredBMS) {
+        var settings = DeviceSettingsStore.load(device.id)
+        settings.storedIcon = icon
+        DeviceSettingsStore.save(settings, for: device.id)
+        pickedIcons.updateValue(icon, forKey: device.id)
+
+        // The open device holds its own copy of these settings, so write it there
+        // too rather than leaving the two to disagree until the next reconnection.
+        if connection.openDeviceID == device.id {
+            connection.settings.storedIcon = icon
         }
     }
 
@@ -108,14 +155,16 @@ struct DeviceListView: View {
 private struct DeviceCard: View {
     let device: DiscoveredBMS
     let name: String
+    let icon: DeviceIcon
     let action: () -> Void
+    let onCustomise: () -> Void
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Image(systemName: device.isDemo ? "wand.and.sparkles" : "dot.radiowaves.left.and.right")
-                        .foregroundStyle(Color.accentColor)
+                    DeviceIconView(icon: icon)
+                        .frame(width: 22, height: 22, alignment: .leading)
                     Spacer()
                     if let rssi = device.rssi {
                         Text("\(rssi) dBm")
@@ -144,6 +193,9 @@ private struct DeviceCard: View {
         }
         .buttonStyle(.plain)
         .modifier(CardSurfaceModifier())
+        .contextMenu {
+            Button("Change Icon…", systemImage: "face.smiling", action: onCustomise)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(name)
         .accessibilityHint("Opens this device")
