@@ -504,8 +504,18 @@ final class BMSConnection: NSObject {
 
     // MARK: - One-shot brackets
 
+    /// Whether the pack has an alert reset to offer at all.
+    ///
+    /// Separate from `canClearAlerts` on purpose: the button is *drawn* on this one.
+    /// Drawing it on whether the tap would be accepted meant it vanished the moment
+    /// the reset was queued — taking its own spinner with it — and came back once the
+    /// bracket had already finished.
+    var offersClearingAlerts: Bool {
+        status.isConnected && adapter.supportsClearingAlerts
+    }
+
     var canClearAlerts: Bool {
-        status.isConnected && adapter.supportsClearingAlerts && !isWriting
+        offersClearingAlerts && !isWriting
     }
 
     var canCalibrate: Bool {

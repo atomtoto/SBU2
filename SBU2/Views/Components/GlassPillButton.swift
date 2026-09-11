@@ -29,6 +29,10 @@ struct GlassPillButton: View {
         var cornerRadius: CGFloat { self == .standard ? 22 : 18 }
         var fontSize: CGFloat { self == .standard ? 17 : 15 }
         var symbolSlot: CGFloat { self == .standard ? 24 : 20 }
+        /// Room between the label and the pill's edge. The standard size was drawn
+        /// wide enough that its labels never come near one; the small size, carrying
+        /// nearly as much text in a narrower pill, reaches them.
+        var horizontalPadding: CGFloat { self == .standard ? 0 : 12 }
     }
 
     let title: String
@@ -48,29 +52,32 @@ struct GlassPillButton: View {
             #endif
             action()
         } label: {
-            ZStack {
-                background
-                    .frame(width: size.width, height: size.height)
-                HStack {
-                    Text(title)
-                        .font(.system(size: size.fontSize))
-                    // A fixed slot sized to the symbol, so swapping it for the
-                    // spinner neither shifts the label nor changes apparent size.
-                    ZStack {
-                        if isWaiting {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        } else {
-                            Image(systemName: symbol)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        }
+            HStack {
+                Text(title)
+                    .font(.system(size: size.fontSize))
+                // A fixed slot sized to the symbol, so swapping it for the
+                // spinner neither shifts the label nor changes apparent size.
+                ZStack {
+                    if isWaiting {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                            .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                    } else {
+                        Image(systemName: symbol)
+                            .transition(.opacity.combined(with: .scale(scale: 0.6)))
                     }
-                    .frame(width: size.symbolSlot, height: size.symbolSlot)
                 }
-                .foregroundColor(.white)
+                .frame(width: size.symbolSlot, height: size.symbolSlot)
             }
+            .foregroundColor(.white)
+            .padding(.horizontal, size.horizontalPadding)
+            // The designed width is a floor, not a fixed size: a label needing more
+            // room than that widens the pill instead of crowding its own edges. The
+            // standard size asks for no padding, so it still comes out at exactly the
+            // width it always had, and two of them side by side still match.
+            .frame(minWidth: size.width, minHeight: size.height)
+            .background(background)
             // However small the pill is drawn, it stays as easy to hit.
             .frame(height: max(size.height, 44))
             .contentShape(.rect)

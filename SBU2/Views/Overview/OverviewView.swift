@@ -49,6 +49,7 @@ struct OverviewView: View {
                                    fullMillivolts: Double(connection.settings.cellFullVoltage))
                 }
                 BatteryInfoBox(info: connection.info,
+                               offersClearingAlerts: connection.offersClearingAlerts,
                                canClearAlerts: connection.canClearAlerts,
                                isClearingAlerts: connection.isClearingAlerts,
                                clearAlertsOutcome: connection.clearAlertsOutcome) {
@@ -411,6 +412,10 @@ private struct CellVoltageBar: View {
 
 private struct BatteryInfoBox: View {
     let info: BasicInfo
+    /// Whether to show the reset button at all, and whether it would accept a tap
+    /// right now. Two separate questions: the button has to stay on screen while the
+    /// reset it started is still running, which is exactly when it refuses taps.
+    let offersClearingAlerts: Bool
     let canClearAlerts: Bool
     let isClearingAlerts: Bool
     let clearAlertsOutcome: BMSConnection.WriteOutcome
@@ -450,13 +455,12 @@ private struct BatteryInfoBox: View {
                         }
                     }
                 }
-                if canClearAlerts {
-//                    Divider()
+                if offersClearingAlerts {
                     GlassPillButton(title: "Reset alerts",
                                     color: .red,
                                     symbol: "exclamationmark.triangle",
                                     isWaiting: isClearingAlerts,
-                                    isBusy: isClearingAlerts,
+                                    isBusy: !canClearAlerts,
                                     size: .small) {
                         confirmingClear = true
                     }
