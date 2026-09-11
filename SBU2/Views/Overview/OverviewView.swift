@@ -28,6 +28,7 @@ struct OverviewView: View {
                 ButtonBox(info: connection.info,
                           settings: connection.settings,
                           enabled: connection.canControlMOS,
+                          hasReading: connection.hasReading,
                           mosWrite: connection.mosWrite) { change in
                     if appSettings.showMOSFETWarning {
                         confirmation = change
@@ -52,6 +53,7 @@ struct OverviewView: View {
                 BatteryInfoBox(info: connection.info,
                                offersClearingAlerts: connection.offersClearingAlerts,
                                canClearAlerts: connection.canClearAlerts,
+                               hasReading: connection.hasReading,
                                isClearingAlerts: connection.isClearingAlerts,
                                clearAlertsOutcome: connection.clearAlertsOutcome) {
                     connection.clearAlerts()
@@ -120,11 +122,16 @@ private struct ButtonBox: View {
     let info: BasicInfo
     let settings: DeviceSettings
     let enabled: Bool
+    /// Whether the pack has said anything yet. Until it has, neither button knows
+    /// what it is showing, and both say so rather than guessing.
+    let hasReading: Bool
     let mosWrite: MOSWriteTracker
     let onChange: (MOSChange) -> Void
 
     private static let on = Color(red: 0, green: 0.6, blue: 0.1)
     private static let off = Color(red: 0.8, green: 0.3, blue: 0.05)
+    /// Neither on nor off: no answer yet.
+    private static let unknown = Color.gray
 
     /// Blue with a clock badge when the charge is being held back on purpose.
     private var chargeHeldForLater: Bool {
@@ -132,22 +139,30 @@ private struct ButtonBox: View {
     }
 
     private var chargeColor: Color {
+        guard hasReading else { return Self.unknown }
         if chargeHeldForLater { return .blue }
         return info.chargeMOSEnabled ? Self.on : Self.off
     }
 
     private var chargeSymbol: String {
+        guard hasReading else { return Self.unknownSymbol }
         if chargeHeldForLater { return "bolt.badge.clock.fill" }
         return info.chargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
 
     private var dischargeColor: Color {
-        info.dischargeMOSEnabled ? Self.on : Self.off
+        guard hasReading else { return Self.unknown }
+        return info.dischargeMOSEnabled ? Self.on : Self.off
     }
 
     private var dischargeSymbol: String {
-        info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
+        guard hasReading else { return Self.unknownSymbol }
+        return info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
+
+    /// Not the slashed bolt, which is the pack's way of saying a terminal is off —
+    /// a thing we do not yet know.
+    private static let unknownSymbol = "ellipsis"
 
     var body: some View {
         Card(padding: 0) {
@@ -284,6 +299,10 @@ private struct BatteryInfoBox: View {
     /// reset it started is still running, which is exactly when it refuses taps.
     let offersClearingAlerts: Bool
     let canClearAlerts: Bool
+    /// Whether the pack has answered yet. The button is grey until it has, for the
+    /// same reason the MOSFET pair is: nothing in this box means anything before
+    /// the first frame lands.
+    let hasReading: Bool
     let isClearingAlerts: Bool
     let clearAlertsOutcome: BMSConnection.WriteOutcome
     let onClearAlerts: () -> Void
@@ -324,7 +343,7 @@ private struct BatteryInfoBox: View {
                 }
                 if offersClearingAlerts {
                     GlassPillButton(title: "Reset alerts",
-                                    color: .red,
+                                    color: hasReading ? .red : .gray,
                                     symbol: "exclamationmark.triangle",
                                     isWaiting: isClearingAlerts,
                                     isBusy: !canClearAlerts,

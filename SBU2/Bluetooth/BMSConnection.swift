@@ -90,6 +90,13 @@ final class BMSConnection: NSObject {
     private(set) var status: Status = .idle
     private(set) var discovered: [DiscoveredBMS] = []
     private(set) var info = BasicInfo()
+    /// Whether the pack has actually sent a basic-information frame yet.
+    ///
+    /// Everything the overview says about the MOSFETs comes out of that frame, and
+    /// until one lands those fields are only the zeros the struct starts life with.
+    /// Drawn without this they read as "both terminals off", which is a statement
+    /// about the pack rather than what it is — no answer yet.
+    private(set) var hasReading = false
     private(set) var cellVoltages: [Double] = []
     private(set) var lastUpdate: Date?
     private(set) var lastError: String?
@@ -278,6 +285,7 @@ final class BMSConnection: NSObject {
     private func resetReadings() {
         adapter.reset()
         info = BasicInfo()
+        hasReading = false
         cellVoltages = []
         lastUpdate = nil
         estimator.forget()
@@ -378,6 +386,7 @@ final class BMSConnection: NSObject {
     private func stepDemo() {
         demo?.step()
         info = demo?.info ?? BasicInfo()
+        hasReading = demo != nil
         cellVoltages = demo?.cellVoltages ?? []
         lastUpdate = .now
         noteForEstimate(info)
@@ -456,8 +465,12 @@ final class BMSConnection: NSObject {
 
     // MARK: - Writes
 
+    /// A MOSFET command carries the state of *both* terminals, and the one not being
+    /// toggled is read back out of the last reading. So this waits for a reading:
+    /// before one arrives that field is zero, and a tap meant to enable charging
+    /// would quietly command the discharge terminal off along with it.
     var canControlMOS: Bool {
-        status.isConnected && adapter.supportsMOSControl && !isWriting
+        status.isConnected && hasReading && adapter.supportsMOSControl && !isWriting
     }
 
     /// Whether a bracket is still queued or unanswered.
@@ -515,7 +528,7 @@ final class BMSConnection: NSObject {
     }
 
     var canClearAlerts: Bool {
-        offersClearingAlerts && !isWriting
+        offersClearingAlerts && hasReading && !isWriting
     }
 
     var canCalibrate: Bool {
@@ -620,6 +633,7 @@ final class BMSConnection: NSObject {
         switch event.kind {
         case .basicInfo(let decoded):
             info = decoded
+            hasReading = true
             lastUpdate = .now
             noteForEstimate(decoded)
             mosWrite.reconcile(chargeEnabled: decoded.chargeMOSEnabled,
