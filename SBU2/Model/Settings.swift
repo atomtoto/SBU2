@@ -129,7 +129,8 @@ enum CellVoltageStyle: String, Codable, CaseIterable, Identifiable {
     /// Figures only, wrapped into as many columns as fit. What a long string of
     /// cells wants, since twenty-four bars do not fit on a phone worth reading.
     case compact
-    /// The same wrapped figures, each on its own pane of glass.
+    /// The aesthetic bars, two to a row and shorter, for a pack with more cells
+    /// than one column of them can show.
     case compactAesthetic
     /// One wide bar per cell with the figure floating on top of it.
     case aesthetic

@@ -84,6 +84,9 @@ struct CellSummary {
     var highestIndex: Int
     var lowest: Double
     var highest: Double
+    /// The mean of the populated cells, which is the pack's own voltage divided by
+    /// its cell count — and a fair bit steadier than either extreme.
+    var average: Double
 
     var deltaMillivolts: Double { (highest - lowest) * 1000 }
 
@@ -96,5 +99,6 @@ struct CellSummary {
         highestIndex = high.offset
         lowest = low.element
         highest = high.element
+        average = live.reduce(0) { $0 + $1.element } / Double(live.count)
     }
 }

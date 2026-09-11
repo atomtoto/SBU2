@@ -2,7 +2,7 @@
 //  CellVoltageBox.swift
 //  SBU2
 //
-//  The per-cell voltages, in any of the three styles they can be drawn in.
+//  The per-cell voltages, in any of the four styles they can be drawn in.
 //
 
 import SwiftUI
@@ -114,88 +114,82 @@ struct CellVoltageBox: View {
         }
     }
 
-    // MARK: - Figures, each on its own pane of glass
-
-    private var compactAestheticLayout: some View {
-        // Wider tiles than the plain compact grid, because each figure now carries a
-        // pane of its own and glass needs a margin to read as glass.
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
-                  alignment: .leading,
-                  spacing: 8) {
-            ForEach(cells) { cell in
-                VStack(spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text("\(cell.index + 1)")
-                            .font(.caption2.weight(.semibold))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        if balancing.contains(cell.index) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                                .transition(.scale.combined(with: .opacity))
-                        }
-                    }
-                    Text(cell.voltage.formatted(decimals: 3, unit: "V"))
-                        .font(.system(size: 15, weight: .bold))
-                        .monospacedDigit()
-                        .foregroundStyle(tint(for: cell.index))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 6)
-                .background { pane(for: cell.index) }
-            }
-        }
-    }
-
-    /// Clear glass for most cells, tinted on the two the balancer is working on, so
-    /// the pair can still be picked out of a wall of identical panes.
-    @ViewBuilder
-    private func pane(for index: Int) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        let accent = tint(for: index)
-        let isExtreme = accent != .primary
-        if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(isExtreme ? .regular.tint(accent.opacity(0.25)) : .regular,
-                                    in: shape)
-        } else {
-            shape.fill(.ultraThinMaterial)
-                .overlay { shape.fill(isExtreme ? accent.opacity(0.15) : .clear) }
-        }
-    }
-
     // MARK: - Wide bars, figures floating on top
 
     private var aestheticLayout: some View {
         VStack(spacing: 8) {
             ForEach(cells) { cell in
-                LinearMeter(fraction: fraction(for: cell.voltage),
-                            tint: barTint(for: cell.index),
-                            height: 38,
-                            glass: true) {
-                    HStack(spacing: 6) {
-                        Text("\(cell.index + 1)")
-                            .font(.system(size: 13, weight: .heavy))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        if balancing.contains(cell.index) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 11))
-                                .transition(.scale.combined(with: .opacity))
-                        }
-                        Spacer(minLength: 8)
-                        GlassReadout(text: cell.voltage.formatted(decimals: 3, unit: "V"),
-                                     tint: tint(for: cell.index))
-                    }
-                    .padding(.horizontal, 10)
-                    .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
-                }
+                aestheticRow(cell, height: 38, compact: false)
             }
         }
+    }
+
+    /// The same bars, two to a row and a little shorter, so a longer string of cells
+    /// fits on a screen without giving any of them up.
+    private var compactAestheticLayout: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2),
+                  spacing: 8) {
+            ForEach(cells) { cell in
+                aestheticRow(cell, height: 30, compact: true)
+            }
+        }
+    }
+
+    /// One cell as a bar with its figure floating on top.
+    ///
+    /// The bar is plain colour rather than glass: the figure on top is the glass, and
+    /// two layers of it stacked read as neither.
+    private func aestheticRow(_ cell: Cell, height: CGFloat, compact: Bool) -> some View {
+        LinearMeter(fraction: fraction(for: cell.voltage),
+                    tint: .accentColor,
+                    height: height) {
+            HStack(spacing: compact ? 4 : 6) {
+                if figuresLead {
+                    readout(cell, compact: compact)
+                    Spacer(minLength: 6)
+                    indexLabel(cell, compact: compact)
+                } else {
+                    indexLabel(cell, compact: compact)
+                    Spacer(minLength: 6)
+                    readout(cell, compact: compact)
+                }
+            }
+            .padding(.horizontal, compact ? 7 : 10)
+            .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
+        }
+    }
+
+    private func indexLabel(_ cell: Cell, compact: Bool) -> some View {
+        HStack(spacing: 3) {
+            Text("\(cell.index + 1)")
+                .font(.system(size: compact ? 11 : 13, weight: .heavy))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            if balancing.contains(cell.index) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: compact ? 9 : 11))
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+
+    private func readout(_ cell: Cell, compact: Bool) -> some View {
+        GlassReadout(text: cell.voltage.formatted(decimals: 3, unit: "V"),
+                     tint: tint(for: cell.index),
+                     compact: compact)
+    }
+
+    /// Which side the figures sit on.
+    ///
+    /// A bar fills from the left, so a pack sitting above its nominal cell voltage
+    /// has the left of every bar covered and the right of it bare, and a pack below
+    /// nominal has that the other way round. Putting the figures on whichever side is
+    /// uniformly one thing keeps them off the edge between the two, rather than
+    /// leaving them half on the fill and half off it — and keeps them on the same
+    /// side as each other, since one average decides it for the whole box.
+    private var figuresLead: Bool {
+        guard let summary else { return true }
+        return summary.average >= Double(settings.cellNominalVoltage) / 1000
     }
 
     // MARK: - Shared figures
@@ -223,15 +217,6 @@ struct CellVoltageBox: View {
         return .primary
     }
 
-    /// The same pairing carried into the bar itself, where `.primary` would be a
-    /// slab of black or white rather than a colour.
-    private func barTint(for index: Int) -> Color {
-        guard let summary, summary.highest > summary.lowest else { return .accentColor }
-        if index == summary.lowestIndex { return .red }
-        if index == summary.highestIndex { return .green }
-        return .accentColor
-    }
-
     private func fraction(for voltage: Double) -> Double {
         let empty = Double(settings.cellEmptyVoltage)
         let span = Double(settings.cellFullVoltage) - empty
@@ -245,14 +230,17 @@ struct CellVoltageBox: View {
 private struct GlassReadout: View {
     let text: String
     let tint: Color
+    var compact: Bool = false
 
     var body: some View {
         Text(text)
-            .font(.system(size: 14, weight: .bold))
+            .font(.system(size: compact ? 12 : 14, weight: .bold))
             .monospacedDigit()
             .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, compact ? 7 : 10)
+            .padding(.vertical, compact ? 3 : 5)
             .background { surface }
     }
 
