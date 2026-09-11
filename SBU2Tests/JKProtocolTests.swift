@@ -358,23 +358,45 @@ struct JKAdapterTests {
         #expect(adapter.calibrationCommands(.idleCurrent, password: nil).isEmpty)
     }
 
-    @Test("Switching a terminal writes both registers, and expects no answer to either")
+    @Test("Only the terminal that was touched is written, and it expects no answer")
     func mosWrites() {
-        let commands = JKAdapter().mosCommands(charge: true, discharge: false, password: nil)
-        #expect(commands.count == 2)
-        #expect(commands[0].bytes == JK.write(.chargingSwitch, on: true))
-        #expect(commands[1].bytes == JK.write(.dischargingSwitch, on: false))
+        // Writing both used to leave discharging broken: the two went out charge
+        // first, and the pack took the first and dropped the second.
+        let charging = JKAdapter().mosCommands(terminal: .charge,
+                                               charge: true, discharge: false, password: nil)
+        #expect(charging.map(\.bytes) == [JK.write(.chargingSwitch, on: true)])
+
+        let discharging = JKAdapter().mosCommands(terminal: .discharge,
+                                                  charge: true, discharge: false, password: nil)
+        #expect(discharging.map(\.bytes) == [JK.write(.dischargingSwitch, on: false)])
+
         // The pack acknowledges nothing; the next streamed reading is the receipt.
-        #expect(commands.map(\.expectedRegister) == [nil, nil])
-        #expect(commands.map(\.isPoll) == [false, false])
+        #expect(discharging.map(\.expectedRegister) == [nil])
+        #expect(discharging.map(\.isPoll) == [false])
+    }
+
+    @Test("Switching one terminal never touches the other's register")
+    func leavesTheOtherTerminalAlone() {
+        let adapter = JKAdapter()
+        for terminal in [MOSWriteTracker.Terminal.charge, .discharge] {
+            let commands = adapter.mosCommands(terminal: terminal,
+                                               charge: true, discharge: true, password: nil)
+            #expect(commands.count == 1)
+            let register = commands[0].bytes[4]
+            #expect(register == (terminal == .charge
+                                 ? JK.Register.chargingSwitch.rawValue
+                                 : JK.Register.dischargingSwitch.rawValue))
+        }
     }
 
     @Test("A password is not sent because the protocol has nowhere to put one")
     func noPasswordInTheWrite() {
         // Same bytes with a password as without. The reference writes these registers
         // with no authentication of any kind, and there is no unlock frame to send.
-        let withPassword = JKAdapter().mosCommands(charge: true, discharge: true, password: "1234")
-        let without = JKAdapter().mosCommands(charge: true, discharge: true, password: nil)
+        let withPassword = JKAdapter().mosCommands(terminal: .charge,
+                                                   charge: true, discharge: true, password: "1234")
+        let without = JKAdapter().mosCommands(terminal: .charge,
+                                              charge: true, discharge: true, password: nil)
         #expect(withPassword.map(\.bytes) == without.map(\.bytes))
         #expect(!JKAdapter().isValidPassword("1234"))
     }

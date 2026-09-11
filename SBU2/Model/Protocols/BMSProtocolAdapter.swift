@@ -125,7 +125,15 @@ protocol BMSProtocolAdapter: AnyObject {
 
     /// The bracketed sequence that switches the MOSFETs. `password` is the hardware
     /// password to replay first, or `nil` on an unprotected pack.
-    func mosCommands(charge: Bool, discharge: Bool, password: String?) -> [BMSCommand]
+    ///
+    /// `charge` and `discharge` are the state the pack should end up in; `terminal`
+    /// is the one the user actually touched. A family that carries both terminals in
+    /// a single write ignores the third argument, and one that keeps a register per
+    /// terminal uses it to leave the other register alone.
+    func mosCommands(terminal: MOSWriteTracker.Terminal,
+                     charge: Bool,
+                     discharge: Bool,
+                     password: String?) -> [BMSCommand]
 
     /// The bracketed sequence that clears the pack's stored alerts. Empty when the
     /// family cannot do it. `password` replays as it does for `mosCommands`.

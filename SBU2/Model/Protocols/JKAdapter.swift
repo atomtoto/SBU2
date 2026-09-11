@@ -127,19 +127,30 @@ final class JKAdapter: BMSProtocolAdapter {
 
     // MARK: - Writes
 
-    /// Both terminals, one register each.
+    /// One register, for the terminal that was actually touched.
     ///
-    /// JK keeps them apart where JBD packs both into a single write, so the one that
-    /// did not change is written back at the value it already holds. That is a no-op
-    /// to the pack, and it keeps this the same one-call operation it is everywhere
-    /// else in the app.
+    /// This used to write both — the other one at the value it already held, which
+    /// ought to have been a harmless no-op. It was not. Charging worked and
+    /// discharging timed out every time, and the two writes went out in that order:
+    /// charge first, discharge second. A pack that takes the first command of a pair
+    /// and drops the second explains that exactly, and nothing else does. Whatever
+    /// the reason — the pack is busy beeping, or it simply will not take two register
+    /// writes in quick succession — the fix is the same, and it is what the pack
+    /// wanted anyway: one tap, one write, like the switches in the reference.
     ///
     /// Nothing is expected back. The pack does not acknowledge a register write, and
     /// it does not need to: it is already streaming readings, and the next one says
     /// whether the terminal moved — which is the confirmation the button waits on.
-    func mosCommands(charge: Bool, discharge: Bool, password: String?) -> [BMSCommand] {
-        [BMSCommand(bytes: JK.write(.chargingSwitch, on: charge)),
-         BMSCommand(bytes: JK.write(.dischargingSwitch, on: discharge))]
+    func mosCommands(terminal: MOSWriteTracker.Terminal,
+                     charge: Bool,
+                     discharge: Bool,
+                     password: String?) -> [BMSCommand] {
+        switch terminal {
+        case .charge:
+            [BMSCommand(bytes: JK.write(.chargingSwitch, on: charge))]
+        case .discharge:
+            [BMSCommand(bytes: JK.write(.dischargingSwitch, on: discharge))]
+        }
     }
 
     func clearAlertsCommands(password: String?) -> [BMSCommand] { [] }

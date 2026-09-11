@@ -522,7 +522,8 @@ final class BMSConnection: NSObject {
             return
         }
 
-        enqueueWrite(adapter.mosCommands(charge: charge,
+        enqueueWrite(adapter.mosCommands(terminal: terminal,
+                                         charge: charge,
                                          discharge: discharge,
                                          password: replayPassword))
     }

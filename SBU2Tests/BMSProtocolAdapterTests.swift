@@ -41,7 +41,8 @@ struct JBDAdapterTests {
 
     @Test("An unprotected pack gets the bracket without a password replay")
     func mosBracketWithoutPassword() {
-        let commands = JBDAdapter().mosCommands(charge: false, discharge: true, password: nil)
+        let commands = JBDAdapter().mosCommands(terminal: .charge,
+                                                charge: false, discharge: true, password: nil)
         #expect(commands.map(\.bytes) == [JBD.openFactoryMode,
                                           JBD.mosControl(charge: false, discharge: true),
                                           JBD.closeFactoryMode])
@@ -49,9 +50,20 @@ struct JBDAdapterTests {
         #expect(commands.map(\.isCleanup) == [false, false, true])
     }
 
+    @Test("Both terminals ride in one write, so which one was touched changes nothing")
+    func jbdIgnoresTheTerminal() {
+        let adapter = JBDAdapter()
+        let viaCharge = adapter.mosCommands(terminal: .charge,
+                                            charge: false, discharge: true, password: nil)
+        let viaDischarge = adapter.mosCommands(terminal: .discharge,
+                                               charge: false, discharge: true, password: nil)
+        #expect(viaCharge.map(\.bytes) == viaDischarge.map(\.bytes))
+    }
+
     @Test("A protected pack is unlocked first")
     func mosBracketWithPassword() {
-        let commands = JBDAdapter().mosCommands(charge: true, discharge: true, password: "123456")
+        let commands = JBDAdapter().mosCommands(terminal: .discharge,
+                                                charge: true, discharge: true, password: "123456")
         #expect(commands.count == 4)
         #expect(commands.first?.bytes == JBD.enterPassword("123456"))
     }

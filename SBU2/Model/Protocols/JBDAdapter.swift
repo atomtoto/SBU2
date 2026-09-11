@@ -54,7 +54,13 @@ final class JBDAdapter: BMSProtocolAdapter {
     }
 
     /// Unlock the pack if it is protected, open factory mode, write, close it again.
-    func mosCommands(charge: Bool, discharge: Bool, password: String?) -> [BMSCommand] {
+    ///
+    /// The terminal is not needed: JBD carries both of them as two bits of one
+    /// register, so there is only ever one write and it always says both.
+    func mosCommands(terminal: MOSWriteTracker.Terminal,
+                     charge: Bool,
+                     discharge: Bool,
+                     password: String?) -> [BMSCommand] {
         unlockCommands(password)
             + [command(JBD.openFactoryMode, .factoryModeOpen),
                command(JBD.mosControl(charge: charge, discharge: discharge), .mosControl),
