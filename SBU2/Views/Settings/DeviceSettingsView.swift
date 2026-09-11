@@ -48,16 +48,25 @@ struct DeviceSettingsView: View {
                 Text("Changing the device type allows you to access additional menus.")
             }
 
+            // Out of the GPS section, which only vehicles see: the overview's power
+            // bar is scaled against this too, and every kind of pack has one of those.
+            Section {
+                LabeledContent("Nominal Power") {
+                    HStack(spacing: 4) {
+                        TextField("1000", value: $connection.settings.expectedPower, format: .number)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.numberPad)
+                        Text("W").foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Power")
+            } footer: {
+                Text("What this pack draws when it is working hard. It sets the full scale of the power bar in the overview, and of the power dial on the GPS screen.")
+            }
+
             if connection.settings.kind == .vehicle {
                 Section {
-                    LabeledContent("Nominal Power") {
-                        HStack(spacing: 4) {
-                            TextField("1000", value: $connection.settings.expectedPower, format: .number)
-                                .multilineTextAlignment(.trailing)
-                                .keyboardType(.numberPad)
-                            Text("W").foregroundStyle(.secondary)
-                        }
-                    }
                     LabeledContent("Expected Range") {
                         HStack(spacing: 4) {
                             TextField("65", value: $connection.settings.expectedRange, format: .number)
@@ -158,8 +167,34 @@ struct DialsSettingsView: View {
 struct OverviewSettingsView: View {
     @Binding var settings: DeviceSettings
 
+    @Environment(AppSettings.self) private var appSettings
+
     var body: some View {
+        @Bindable var appSettings = appSettings
+
         Form {
+            // The same two choices the boxes themselves offer on a long press. Kept
+            // here as well because a long press advertises itself to nobody.
+            Section {
+                Picker("Info box", selection: $appSettings.overviewStyle) {
+                    ForEach(OverviewStyle.allCases) { style in
+                        Label(style.label, systemImage: style.symbol).tag(style)
+                    }
+                }
+                Picker("Cell voltages", selection: $appSettings.storedCellVoltageStyle) {
+                    Label("Automatic", systemImage: "wand.and.rays")
+                        .tag(CellVoltageStyle?.none)
+                    ForEach(CellVoltageStyle.allCases) { style in
+                        Label(style.label, systemImage: style.symbol)
+                            .tag(CellVoltageStyle?.some(style))
+                    }
+                }
+            } header: {
+                Text("Style")
+            } footer: {
+                Text("Long-press either box in the overview to change it from there. Automatic draws the cells as bars, or as figures alone once there are more than twenty of them.")
+            }
+
             Section {
                 Toggle("Always show charge limit", isOn: $settings.alwaysShowChargeLimit)
                     .disabled(!settings.chargeLimitEnabled)
