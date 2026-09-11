@@ -357,6 +357,31 @@ struct JKAdapterTests {
         #expect(adapter.pollCommands().count == 2)
     }
 
+    @Test("A frame whose layout cannot be settled still produces a reading")
+    func fallsBackRatherThanShowingNothing() {
+        // A pack that reports no average of its own: neither layout can be confirmed
+        // from the frame, and an empty screen would be the worst of the answers.
+        var frame = Fixtures.cellInfo24
+        frame[58] = 0
+        frame[59] = 0
+        frame[299] = JK.checksum(frame[0..<299])
+        #expect(JK.variant(ofCellInfo: frame) == nil)
+
+        let adapter = JKAdapter()
+        var events: [BMSEvent] = []
+        for chunk in stride(from: 0, to: 300, by: 20).map({
+            Data(frame[$0..<min($0 + 20, 300)])
+        }) {
+            events += adapter.ingest(chunk)
+        }
+        #expect(events.count == 2)
+        guard case .basicInfo(let info) = events.first?.kind else {
+            Issue.record("Expected a reading even without a settled layout")
+            return
+        }
+        #expect(info.stateOfCharge == 84)
+    }
+
     @Test("A cell-info frame turns into a reading and a set of cell voltages")
     func ingestsAReading() {
         let adapter = JKAdapter()

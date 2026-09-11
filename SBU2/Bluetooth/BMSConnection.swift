@@ -167,6 +167,12 @@ final class BMSConnection: NSObject {
     /// Set once the pack's notifications are actually subscribed. Requests written
     /// before that are answered into a void.
     @ObservationIgnored private var notifying = false
+    /// Every characteristic in the pack's service that can stream, all of which are
+    /// subscribed to. Which one a pack actually streams on is not knowable up front —
+    /// see `didDiscoverCharacteristicsFor`.
+    @ObservationIgnored private var subscribable: [CBCharacteristic] = []
+    @ObservationIgnored private var subscriptionsPending = 0
+    @ObservationIgnored private var subscriptionError: String?
     @ObservationIgnored private var descriptor = BMSProtocolRegistry.fallback
     @ObservationIgnored private var adapter: any BMSProtocolAdapter = BMSProtocolRegistry.fallback.make()
     /// Commands waiting to be written, in order.
@@ -303,6 +309,9 @@ final class BMSConnection: NSObject {
             finish(pending.kind, .rejected("The link dropped before the BMS answered."))
         }
         writeCharacteristic = nil
+        subscribable = []
+        subscriptionsPending = 0
+        subscriptionError = nil
         notifying = false
     }
 
@@ -776,55 +785,74 @@ extension BMSConnection: CBPeripheralDelegate {
             abortConnection("\(descriptor.label) expects service \(profile.service.uuidString), which this device does not have. It offers: \(found.isEmpty ? "nothing" : found.joined(separator: ", ")).")
             return
         }
-        // Deduplicated because a family may use one characteristic for both.
-        var wanted = [profile.notify]
-        if profile.write != profile.notify { wanted.append(profile.write) }
-        peripheral.discoverCharacteristics(wanted, for: service)
+        // Everything in the service, not just the two UUIDs the family names. A JK
+        // module carries more than one characteristic under the same UUID, and asking
+        // only for that UUID hid the rest of them.
+        peripheral.discoverCharacteristics(nil, for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didDiscoverCharacteristicsFor service: CBService,
                     error: Error?) {
         let profile = descriptor.profile
-        var notifyCharacteristic: CBCharacteristic?
+        let characteristics = service.characteristics ?? []
 
-        // Two independent questions rather than one switch: JK notifies and is
-        // written on the same characteristic, and a switch answers only the first
-        // case that matches — which left the write characteristic nil and aborted
-        // the connection on exactly the packs that share one.
-        for characteristic in service.characteristics ?? [] {
-            if characteristic.uuid == profile.notify { notifyCharacteristic = characteristic }
-            if characteristic.uuid == profile.write { writeCharacteristic = characteristic }
+        // Chosen by what a characteristic can *do*, with the family's UUID as no more
+        // than a preference. Matching on UUID alone was wrong on JK hardware: the
+        // reference implementation quietly remaps the handle it listens on when the
+        // one it writes to sits at 0x03, which is its way of saying that the
+        // characteristic a JK pack streams on need not be the one it is written to —
+        // and iOS deals in objects rather than handles, so the same trick is not
+        // available. Asking what each one is for answers the question properly, and
+        // leaves JBD's pair exactly where they were.
+        let writable = characteristics.filter {
+            $0.properties.contains(.write) || $0.properties.contains(.writeWithoutResponse)
+        }
+        writeCharacteristic = writable.first { $0.uuid == profile.write } ?? writable.first
+
+        subscribable = characteristics.filter {
+            $0.properties.contains(.notify) || $0.properties.contains(.indicate)
         }
 
-        // Both messages name what the service actually carries, for the same reason
-        // the one above does.
-        let found = (service.characteristics ?? []).map(\.uuid.uuidString).joined(separator: ", ")
+        let found = characteristics.map(\.uuid.uuidString).joined(separator: ", ")
         guard writeCharacteristic != nil else {
-            abortConnection("Write characteristic \(profile.write.uuidString) not found. This service has: \(found).")
+            abortConnection("Nothing in this service can be written to. It has: \(found).")
             return
         }
-        guard let notifyCharacteristic else {
-            abortConnection("Notify characteristic \(profile.notify.uuidString) not found. This service has: \(found).")
+        guard !subscribable.isEmpty else {
+            abortConnection("Nothing in this service can notify. It has: \(found).")
             return
         }
-        // Polling starts from didUpdateNotificationStateFor, once the subscription is
+
+        // Every one of them, because there is no way to tell from here which will
+        // carry the answers — and a pack that streams on the one we did not subscribe
+        // to looks exactly like a pack that says nothing at all.
+        subscriptionsPending = subscribable.count
+        subscriptionError = nil
+        // Polling starts from didUpdateNotificationStateFor, once a subscription is
         // live: anything written before that is answered to nobody.
-        peripheral.setNotifyValue(true, for: notifyCharacteristic)
+        for characteristic in subscribable {
+            peripheral.setNotifyValue(true, for: characteristic)
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateNotificationStateFor characteristic: CBCharacteristic,
                     error: Error?) {
-        guard characteristic.uuid == descriptor.profile.notify else { return }
-        if let error {
-            abortConnection(error.localizedDescription)
-            return
+        guard subscribable.contains(where: { $0 === characteristic }) else { return }
+        subscriptionsPending = max(0, subscriptionsPending - 1)
+        if let error { subscriptionError = error.localizedDescription }
+
+        // The first one to come up is enough to start on.
+        if characteristic.isNotifying, !notifying {
+            notifying = true
+            status = .connected(peripheral.name ?? "BMS")
+            startPolling()
         }
-        notifying = characteristic.isNotifying
-        guard notifying else { return }
-        status = .connected(peripheral.name ?? "BMS")
-        startPolling()
+        // Only once every one of them has answered and none of them took.
+        if !notifying, subscriptionsPending == 0 {
+            abortConnection(subscriptionError ?? "This pack accepted no notifications.")
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral,

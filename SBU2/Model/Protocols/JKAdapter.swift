@@ -110,15 +110,21 @@ final class JKAdapter: BMSProtocolAdapter {
             return [BMSEvent(register: type.rawValue, kind: .accepted)]
 
         case .cellInfo:
+            // Detection is retried until a frame settles it, but never gates the
+            // reading: a pack whose average-cell field reads zero would otherwise
+            // decode to nothing at all, and a screen that stays empty says far less
+            // than one whose figures can be seen to be wrong. The short layout stands
+            // in meanwhile, which is what the reference defaults to anyway.
             if variant == nil { variant = JK.variant(ofCellInfo: frame) }
-            guard let variant, var info = JK.decodeCellInfo(frame, variant) else { return [] }
+            let layout = variant ?? .cells24
+            guard var info = JK.decodeCellInfo(frame, layout) else { return [] }
             // The version and the build date live in the other frame, so they are
             // carried across rather than left blank on every reading.
             info.softwareVersion = identity?.softwareVersion ?? ""
             info.productionDate = identity?.productionDate
             return [BMSEvent(register: type.rawValue, kind: .basicInfo(info)),
                     BMSEvent(register: type.rawValue,
-                             kind: .cellVoltages(JK.cellVoltages(frame, variant)))]
+                             kind: .cellVoltages(JK.cellVoltages(frame, layout)))]
 
         case .settings:
             // Thresholds and limits. Nothing reads them yet.
