@@ -33,11 +33,14 @@ struct DeviceSettingsView: View {
                     }
                 }
                 Toggle("Auto connect", isOn: $connection.settings.autoConnect)
-                NavigationLink {
-                    PasswordSettingsView()
-                } label: {
-                    LabeledContent("Hardware Password",
-                                   value: connection.settings.hasPassword ? "Set" : "None")
+                LabeledContent("Protocol", value: connection.protocolLabel)
+                if connection.supportsPasswordManagement {
+                    NavigationLink {
+                        PasswordSettingsView()
+                    } label: {
+                        LabeledContent("Hardware Password",
+                                       value: connection.settings.hasPassword ? "Set" : "None")
+                    }
                 }
             } header: {
                 Text("Device")
@@ -45,16 +48,25 @@ struct DeviceSettingsView: View {
                 Text("Changing the device type allows you to access additional menus.")
             }
 
+            // Out of the GPS section, which only vehicles see: the overview's power
+            // bar is scaled against this too, and every kind of pack has one of those.
+            Section {
+                LabeledContent("Nominal Power") {
+                    HStack(spacing: 4) {
+                        TextField("1000", value: $connection.settings.expectedPower, format: .number)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.numberPad)
+                        Text("W").foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Power")
+            } footer: {
+                Text("What this pack draws when it is working hard. It sets the full scale of the power bar in the overview, and of the power dial on the GPS screen.")
+            }
+
             if connection.settings.kind == .vehicle {
                 Section {
-                    LabeledContent("Nominal Power") {
-                        HStack(spacing: 4) {
-                            TextField("1000", value: $connection.settings.expectedPower, format: .number)
-                                .multilineTextAlignment(.trailing)
-                                .keyboardType(.numberPad)
-                            Text("W").foregroundStyle(.secondary)
-                        }
-                    }
                     LabeledContent("Expected Range") {
                         HStack(spacing: 4) {
                             TextField("65", value: $connection.settings.expectedRange, format: .number)
@@ -80,31 +92,37 @@ struct DeviceSettingsView: View {
                 }
             }
 
-            Section {
-                Picker("Liontron Mode", selection: $connection.settings.liontronMode) {
-                    ForEach(LiontronMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
+            if connection.supportsCalibration {
+                Section {
+                    NavigationLink("Calibration") {
+                        CalibrationSettingsView()
                     }
+                } header: {
+                    Text("Measurement")
+                } footer: {
+                    Text("Tells the BMS what its readings should really be. Every protection is decided from those readings, so this is worth doing only with a meter in hand.")
                 }
-            } header: {
-                Text("Security")
-            } footer: {
-                Text("If you use a Liontron battery, you can hardware lock it. In auto mode the app disables the MOSFET buttons as soon as the BMS rejects a write.")
             }
 
             Section {
                 Toggle("Charge Limit", isOn: $connection.settings.chargeLimitEnabled)
+                Picker("Cell chemistry", selection: $connection.settings.chemistry) {
+                    ForEach(CellChemistry.allCases) { chemistry in
+                        Text(chemistry.label).tag(chemistry)
+                    }
+                }
                 MillivoltField(title: "Cell empty voltage", value: $connection.settings.cellEmptyVoltage)
                 MillivoltField(title: "Cell nominal voltage", value: $connection.settings.cellNominalVoltage)
                 MillivoltField(title: "Cell full voltage", value: $connection.settings.cellFullVoltage)
             } header: {
                 Text("Charge")
             } footer: {
-                Text("Charge Limit allows you to stop the charge at a certain chosen value. The function appears when the battery is charging. The empty and full voltages also scale the cell voltage bars in Overview.")
+                Text("Charge Limit allows you to stop the charge at a certain chosen value. The function appears when the battery is charging. The empty and full voltages also scale the cell voltage bars in Overview. The chemistry decides how the remaining charge time is worked out: an LFP pack charges at a steady current almost to the top, a Li-ion one starts slowing down with a quarter still to go.")
             }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .dismissableKeyboard()
     }
 }
 
@@ -132,8 +150,11 @@ struct DialsSettingsView: View {
         Form {
             Section {
                 Toggle("Power dial", isOn: $settings.showPowerDial)
+                    .tint(.accent)
                 Toggle("Speed dial", isOn: $settings.showSpeedDial)
+                    .tint(.accent)
                 Toggle("Remaining Range dial", isOn: $settings.showRangeDial)
+                    .tint(.accent)
             } footer: {
                 Text("When a dial is disabled, the information is still visible in the list below the dials.")
             }
@@ -149,6 +170,28 @@ struct OverviewSettingsView: View {
 
     var body: some View {
         Form {
+            // The same two choices the boxes themselves offer on a long press. Kept
+            // here as well because a long press advertises itself to nobody.
+            Section {
+                Picker("Info box", selection: $settings.overviewStyle) {
+                    ForEach(OverviewStyle.allCases) { style in
+                        Label(style.label, systemImage: style.symbol).tag(style)
+                    }
+                }
+                Picker("Cell voltages", selection: $settings.storedCellVoltageStyle) {
+                    Label("Automatic", systemImage: "wand.and.rays")
+                        .tag(CellVoltageStyle?.none)
+                    ForEach(CellVoltageStyle.allCases) { style in
+                        Label(style.label, systemImage: style.symbol)
+                            .tag(CellVoltageStyle?.some(style))
+                    }
+                }
+            } header: {
+                Text("Style")
+            } footer: {
+                Text("Long-press either box in the overview to change it from there. Automatic draws the cells as bars, or as figures alone once there are more than twenty of them.")
+            }
+
             Section {
                 Toggle("Always show charge limit", isOn: $settings.alwaysShowChargeLimit)
                     .disabled(!settings.chargeLimitEnabled)

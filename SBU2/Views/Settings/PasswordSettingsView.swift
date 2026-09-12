@@ -80,15 +80,16 @@ struct PasswordSettingsView: View {
         }
         .navigationTitle("Password")
         .navigationBarTitleDisplayMode(.inline)
+        .dismissableKeyboard()
         .onDisappear { normalisePassword(&connection.settings) }
     }
 
     private var currentValid: Bool {
-        !connection.settings.hasPassword || JBD.isValidPassword(connection.settings.password)
+        !connection.settings.hasPassword || connection.isValidPassword(connection.settings.password)
     }
 
     private var canSubmit: Bool {
-        JBD.isValidPassword(newPassword) && currentValid
+        connection.isValidPassword(newPassword) && currentValid
     }
 
     /// Pads or trims a half-typed password so a stale value never gets replayed.

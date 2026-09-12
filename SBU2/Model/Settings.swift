@@ -93,6 +93,93 @@ final class AppSettings {
     }
 }
 
+// MARK: - Display styles
+
+/// How the overview's top box draws the headline figures.
+///
+/// The same numbers either way — this only decides whether the state of charge is
+/// read off a dial or off a bar.
+enum OverviewStyle: String, Codable, CaseIterable, Identifiable {
+    /// The ring SBU drew, with the rest of the figures stacked beside it.
+    case ring
+    /// Linear meters instead: one for the charge, one for the power.
+    case bars
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .ring: return "Dial"
+        case .bars: return "Bars"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .ring: return "circle.dashed"
+        case .bars: return "chart.bar.fill"
+        }
+    }
+}
+
+/// How the per-cell voltages are laid out.
+enum CellVoltageStyle: String, Codable, CaseIterable, Identifiable {
+    /// A bar per cell, as SBU drew them.
+    case bars
+    /// Figures only, wrapped into as many columns as fit. What a long string of
+    /// cells wants, since twenty-four bars do not fit on a phone worth reading.
+    case compact
+    /// The aesthetic bars, two to a row and shorter, for a pack with more cells
+    /// than one column of them can show.
+    case compactAesthetic
+    /// One wide bar per cell with the figure floating on top of it.
+    case aesthetic
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .bars: return "Bars"
+        case .compact: return "Compact"
+        case .compactAesthetic: return "Compact Aesthetic"
+        case .aesthetic: return "Aesthetic"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .bars: return "chart.bar.fill"
+        case .compact: return "square.grid.3x3"
+        case .compactAesthetic: return "square.grid.2x2.fill"
+        case .aesthetic: return "sparkles"
+        }
+    }
+
+    /// What a pack gets when nobody has chosen: bars until there are too many cells
+    /// for a bar each to be worth reading.
+    static func automatic(cellCount: Int) -> CellVoltageStyle {
+        cellCount > 20 ? .compact : .bars
+    }
+}
+
+/// What a device shows for itself in the list: a system symbol, an emoji, or a
+/// Genmoji.
+///
+/// A Genmoji is not a character — it is an image the keyboard hands over as an
+/// adaptive image glyph — so it cannot be kept as text like the other two. Its
+/// image data is carried here instead.
+enum DeviceIcon: Codable, Equatable, Hashable {
+    case symbol(String)
+    case emoji(String)
+    case glyph(Data)
+
+    /// What a device wears until someone changes it: the demo pack keeps its wand,
+    /// and anything else keeps the aerial the list has always shown.
+    static func standard(isDemo: Bool) -> DeviceIcon {
+        .symbol(isDemo ? "wand.and.sparkles" : "dot.radiowaves.left.and.right")
+    }
+}
+
 // MARK: - Per-device settings
 
 enum DeviceKind: String, Codable, CaseIterable, Identifiable {
@@ -105,23 +192,6 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
         case .classic: return "Classic"
         case .vehicle: return "Vehicle"
         case .storage: return "Stationary storage"
-        }
-    }
-}
-
-/// Some Liontron packs reject every write until their hardware password is entered.
-/// The BMS answers `0x80`, which the app uses to lock the MOSFET buttons rather than
-/// letting the user issue commands that silently fail.
-enum LiontronMode: String, Codable, CaseIterable, Identifiable {
-    case autoDisabled, autoEnabled, disabled
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .autoDisabled: return "Auto (off)"
-        case .autoEnabled: return "Auto (on)"
-        case .disabled: return "Disabled"
         }
     }
 }
@@ -139,11 +209,65 @@ enum ChargeLimitMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// What the cells are made of, which is what decides how a charge finishes.
+enum CellChemistry: String, Codable, CaseIterable, Identifiable {
+    /// The cobalt-oxide family — NMC, LCO — at around 4.2 V a cell.
+    case lithiumIon
+    /// Iron phosphate: 3.65 V a cell, and a far flatter curve on the way there.
+    case lithiumIronPhosphate
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .lithiumIon: return "Li-ion"
+        case .lithiumIronPhosphate: return "LFP"
+        }
+    }
+
+    /// How much of the pack goes in before the charger stops holding the current
+    /// steady and starts holding the voltage instead.
+    ///
+    /// Iron-phosphate cells sit on their plateau nearly to the top and give up only
+    /// the last few percent to the taper. Cobalt-oxide cells start tapering with a
+    /// quarter of the charge still to go, which is why their last bar takes so long.
+    var constantVoltageOnset: Double {
+        switch self {
+        case .lithiumIon: return 0.75
+        case .lithiumIronPhosphate: return 0.95
+        }
+    }
+
+    /// A guess from the full-cell voltage already configured, for a device set up
+    /// before the app thought to ask. The two families are far enough apart in the
+    /// volt-and-a-half between them that the midpoint separates them cleanly.
+    static func inferred(fromCellFullVoltage millivolts: Int) -> CellChemistry {
+        millivolts < 3900 ? .lithiumIronPhosphate : .lithiumIon
+    }
+}
+
+/// Where a scheduled refill stops.
+///
+/// The charge limit keeps the pack at a level it is happy sitting at. A refill is
+/// what happens when that level is not what you want any more: either the pack has
+/// drifted below the limit and should go back to it, or it is about to be used and
+/// should go all the way up — late, so it spends as little time full as it can.
+enum RefillTarget: String, Codable, CaseIterable, Identifiable {
+    case chargeLimit, full
+
+    var id: Self { self }
+}
+
 /// Everything the app remembers about one BMS, keyed by its peripheral identifier.
 struct DeviceSettings: Codable, Equatable {
     var name = ""
     var kind: DeviceKind = .classic
     var autoConnect = false
+
+    /// The BMS family this device speaks. `nil` on a device stored before the app
+    /// supported more than one, and on one that has never been opened — the
+    /// advertisement decides then.
+    var protocolID: BMSProtocolID?
 
     var hasPassword = false
     var password = "000000"
@@ -152,14 +276,24 @@ struct DeviceSettings: Codable, Equatable {
     var cellNominalVoltage = 3700    // mV
     var cellFullVoltage = 4200       // mV
 
+    /// Optional for the same reason as `storedRefillTarget`, and read through
+    /// `chemistry`.
+    var storedChemistry: CellChemistry?
+
+    /// Falls back to whatever the configured full-cell voltage implies, so a device
+    /// paired before the app asked still estimates against the right curve without
+    /// anyone having to go and tell it.
+    var chemistry: CellChemistry {
+        get { storedChemistry ?? .inferred(fromCellFullVoltage: cellFullVoltage) }
+        set { storedChemistry = newValue }
+    }
+
     var expectedPower = 1000         // W, calibrates the power dial
     var expectedRange = 65           // km or mi, calibrates the range dial
 
     var showPowerDial = true
     var showSpeedDial = true
     var showRangeDial = true
-
-    var liontronMode: LiontronMode = .autoDisabled
 
     var chargeLimitEnabled = false
     var alwaysShowChargeLimit = false
@@ -168,6 +302,49 @@ struct DeviceSettings: Codable, Equatable {
     var chargeLimitVoltage: Double = 3.25
     var refillLaterEnabled = false
     var refillDate: Date = .now
+
+    /// Optional on purpose, and read through `refillTarget` rather than directly.
+    ///
+    /// The synthesized decoder throws on a key that is not in the stored JSON even
+    /// when the property has a default, and `DeviceSettingsStore.load` answers a
+    /// throw by handing back factory settings — so a plain new field would quietly
+    /// cost every already-paired device its name, its charge limit and its hardware
+    /// password, which the app cannot recover. An optional decodes as `nil` instead.
+    var storedRefillTarget: RefillTarget?
+
+    /// Defaults to the limit, which is what the setting meant when there was no
+    /// choice: nothing that is already switched on starts charging further than it
+    /// used to.
+    var refillTarget: RefillTarget {
+        get { storedRefillTarget ?? .chargeLimit }
+        set { storedRefillTarget = newValue }
+    }
+
+    /// The icon chosen for this device, or `nil` while it still wears the default.
+    /// Optional for the decode reason given above.
+    var storedIcon: DeviceIcon?
+
+    /// How this pack's two customisable overview boxes are drawn. Optional for the
+    /// same decode reason, and because `nil` genuinely means something for the
+    /// second one: it is the "Automatic" row, which resolves against the cell count.
+    var storedOverviewStyle: OverviewStyle?
+    var storedCellVoltageStyle: CellVoltageStyle?
+
+    var overviewStyle: OverviewStyle {
+        get { storedOverviewStyle ?? .ring }
+        set { storedOverviewStyle = newValue }
+    }
+
+    /// The style a string of this many cells should be drawn in, honouring the choice
+    /// if one was made and falling back to what suits the length of the string.
+    func cellVoltageStyle(cellCount: Int) -> CellVoltageStyle {
+        storedCellVoltageStyle ?? .automatic(cellCount: cellCount)
+    }
+
+    /// What to draw for this device, chosen or not.
+    func icon(isDemo: Bool) -> DeviceIcon {
+        storedIcon ?? .standard(isDemo: isDemo)
+    }
 }
 
 /// Loads and stores `DeviceSettings` per peripheral in `UserDefaults`.

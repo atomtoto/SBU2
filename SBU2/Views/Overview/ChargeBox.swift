@@ -55,22 +55,34 @@ struct ChargeBox: View {
 
             HStack {
                 Image(systemName: "arrow.up.circle.badge.clock")
-                Text("Refill the battery later")
-                Spacer()
-                Button {
-                    settings.refillLaterEnabled.toggle()
-                    impact()
-                } label: {
-                    Image(systemName: settings.refillLaterEnabled ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(settings.refillLaterEnabled ? .accentColor : .gray)
-                        .font(.system(size: 20))
-                }
+                Toggle("Refill the battery later", isOn: refillLaterBinding)
             }
             .padding(.top, 8)
-            .disabled(isAtMaximum)
-            .opacity(isAtMaximum ? 0.5 : 1.0)
 
             if settings.refillLaterEnabled {
+                // Only the choice of where to refill to goes away at the maximum,
+                // and only because there is nothing left to choose between: "up to
+                // the limit" and "up to full" are then the same instruction. The
+                // refill itself still makes sense — topping the pack back up to
+                // full before a given time is exactly what it is for.
+                if !isAtMaximum {
+                    HStack {
+                        Text("Up to")
+                        Spacer(minLength: 12)
+                        // The limit segment carries the figure itself, so the choice
+                        // reads as "back to 80 %" or "all the way" rather than as two
+                        // abstractions.
+                        Picker("Up to", selection: $settings.refillTarget) {
+                            Text(chargeLimitText).tag(RefillTarget.chargeLimit)
+                            Text("Full").tag(RefillTarget.full)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 3)
+                }
+
                 HStack {
                     DatePicker("Select a time",
                                selection: $settings.refillDate,
@@ -84,13 +96,17 @@ struct ChargeBox: View {
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .onChange(of: isAtMaximum) { _, atMaximum in
-            if atMaximum { settings.refillLaterEnabled = false }
-        }
         .background {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
+    }
+
+    /// The limit as it is written above, in whichever unit it was set in.
+    private var chargeLimitText: String {
+        settings.chargeLimitMode == .stateOfCharge
+            ? "\(Int(settings.chargeLimitSOC.rounded()))%"
+            : String(format: "%.2f V", settings.chargeLimitVoltage)
     }
 
     private var voltageRange: ClosedRange<Double> {
@@ -101,8 +117,19 @@ struct ChargeBox: View {
 
     private var isAtMaximum: Bool {
         settings.chargeLimitMode == .stateOfCharge
-            ? settings.chargeLimitSOC == 100
-            : settings.chargeLimitVoltage == cellFullVoltageLight
+            ? settings.chargeLimitSOC >= 100
+            : settings.chargeLimitVoltage >= cellFullVoltageLight - 0.005
+    }
+
+    /// A switch rather than a checkbox, so the row reads as something that is armed
+    /// and stays armed.
+    private var refillLaterBinding: Binding<Bool> {
+        Binding {
+            settings.refillLaterEnabled
+        } set: { newValue in
+            settings.refillLaterEnabled = newValue
+            impact()
+        }
     }
 
     /// Pulls the slider onto the detent and taps once when it lands there.

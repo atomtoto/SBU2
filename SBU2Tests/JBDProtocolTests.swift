@@ -117,6 +117,22 @@ struct CellSummaryTests {
         let summary = try #require(CellSummary(voltages: [3.320, 3.310, 0, 0]))
         #expect(summary.lowestIndex == 1)
         #expect(summary.highestIndex == 0)
+        // Averaged over the two that are live, not over all four — a dead cell
+        // counted as zero volts would drag it to half of what the pack is really at.
+        #expect(abs(summary.average - 3.315) < 0.0001)
+    }
+
+    @Test("The average sits between the extremes, and decides which side the figures take")
+    func average() throws {
+        let summary = try #require(CellSummary(voltages: [3.100, 3.400, 3.250]))
+        #expect(abs(summary.average - 3.250) < 0.0001)
+        #expect(summary.average > summary.lowest)
+        #expect(summary.average < summary.highest)
+
+        // The aesthetic styles put the figures on the leading edge above nominal and
+        // on the trailing edge below it, so that they never straddle the fill's edge.
+        #expect(summary.average >= Double(3200) / 1000)
+        #expect(summary.average < Double(3700) / 1000)
     }
 
     @Test("No summary when no cell is live")
@@ -209,13 +225,6 @@ struct BasicInfoTests {
         #expect(info.nominalCapacity == 100.0)
         #expect(info.stateOfCharge == 45)
         #expect(abs(info.power - (-66.25)) < 0.001)
-    }
-
-    @Test("Remaining time while discharging")
-    func remainingTime() throws {
-        let info = try decoded()
-        let hours = try #require(info.remainingHours)
-        #expect(abs(hours - 9.12) < 0.001)
     }
 
     @Test("Pack configuration and state")

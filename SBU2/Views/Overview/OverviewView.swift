@@ -21,14 +21,14 @@ struct OverviewView: View {
 
         ScrollView {
             LazyVStack(spacing: 10) {
-                if connection.settings.liontronMode == .autoEnabled {
-                    LiontronModeWarning()
-                }
-                DetailBox(info: connection.info, capacityUnit: appSettings.capacityUnit)
+                DetailBox(info: connection.info,
+                          capacityUnit: appSettings.capacityUnit,
+                          settings: $connection.settings)
                     .padding(.top, 5)
                 ButtonBox(info: connection.info,
                           settings: connection.settings,
                           enabled: connection.canControlMOS,
+                          hasReading: connection.hasReading,
                           mosWrite: connection.mosWrite) { change in
                     if appSettings.showMOSFETWarning {
                         confirmation = change
@@ -42,15 +42,22 @@ struct OverviewView: View {
                     ChargeBox(settings: $connection.settings)
                 }
                 CellTemperatureBox(info: connection.info,
-                                   summary: connection.cellSummary)
+                                   summary: connection.cellSummary,
+                                   remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
                                    balancing: connection.info.balancingCells,
                                    summary: connection.cellSummary,
-                                   emptyMillivolts: Double(connection.settings.cellEmptyVoltage),
-                                   fullMillivolts: Double(connection.settings.cellFullVoltage))
+                                   settings: $connection.settings)
                 }
-                BatteryInfoBox(info: connection.info)
+                BatteryInfoBox(info: connection.info,
+                               offersClearingAlerts: connection.offersClearingAlerts,
+                               canClearAlerts: connection.canClearAlerts,
+                               hasReading: connection.hasReading,
+                               isClearingAlerts: connection.isClearingAlerts,
+                               clearAlertsOutcome: connection.clearAlertsOutcome) {
+                    connection.clearAlerts()
+                }
                 if let error = connection.lastError {
                     Card {
                         HStack {
@@ -109,95 +116,22 @@ struct MOSChange: Equatable {
     var confirmTitle: String
 }
 
-// MARK: - Liontron warning
-
-private struct LiontronModeWarning: View {
-    @State private var collapsed = true
-
-    var body: some View {
-        VStack {
-            Button {
-                collapsed.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 20) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .renderingMode(.original)
-                    Text("Liontron protection mode active!")
-                    Image(systemName: collapsed ? "chevron.down" : "chevron.up")
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity)
-                .background {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            VStack {
-                Text("You might need to enter the hardware password in settings")
-                    .multilineTextAlignment(.center)
-                    .animation(.none, value: collapsed)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: collapsed ? 0 : .none)
-            .clipped()
-            .animation(.easeOut, value: collapsed)
-            .padding(collapsed ? 0 : 8)
-            .background {
-                RoundedRectangle(cornerRadius: 25, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
-        }
-    }
-}
-
-// MARK: - Detail box
-
-private struct DetailBox: View {
-    let info: BasicInfo
-    let capacityUnit: CapacityUnit
-
-    var body: some View {
-        Card {
-            HStack(alignment: .center, spacing: 20) {
-                RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                          tint: .stateOfChargeOverview(info.stateOfCharge),
-                          glassArc: true) {
-                    Text(info.stateOfChargeText)
-                        .font(.system(size: 24, weight: .bold))
-                }
-                .frame(width: 140, height: 120)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 13) {
-                    Text(info.powerText)
-                        .font(.system(size: 19, weight: .bold))
-                    Text(info.currentText)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(info.voltageText)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(info.capacityText(unit: capacityUnit))
-                        .font(.system(size: 13, weight: .bold))
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-}
-
 // MARK: - Charge / discharge buttons
 
 private struct ButtonBox: View {
     let info: BasicInfo
     let settings: DeviceSettings
     let enabled: Bool
+    /// Whether the pack has said anything yet. Until it has, neither button knows
+    /// what it is showing, and both say so rather than guessing.
+    let hasReading: Bool
     let mosWrite: MOSWriteTracker
     let onChange: (MOSChange) -> Void
 
     private static let on = Color(red: 0, green: 0.6, blue: 0.1)
     private static let off = Color(red: 0.8, green: 0.3, blue: 0.05)
+    /// Neither on nor off: no answer yet.
+    private static let unknown = Color.gray
 
     /// Blue with a clock badge when the charge is being held back on purpose.
     private var chargeHeldForLater: Bool {
@@ -205,35 +139,39 @@ private struct ButtonBox: View {
     }
 
     private var chargeColor: Color {
+        guard hasReading else { return Self.unknown }
         if chargeHeldForLater { return .blue }
-        guard settings.liontronMode != .autoEnabled else { return .gray }
         return info.chargeMOSEnabled ? Self.on : Self.off
     }
 
     private var chargeSymbol: String {
+        guard hasReading else { return Self.unknownSymbol }
         if chargeHeldForLater { return "bolt.badge.clock.fill" }
-        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
         return info.chargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
 
     private var dischargeColor: Color {
-        guard settings.liontronMode != .autoEnabled else { return .gray }
+        guard hasReading else { return Self.unknown }
         return info.dischargeMOSEnabled ? Self.on : Self.off
     }
 
     private var dischargeSymbol: String {
-        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
+        guard hasReading else { return Self.unknownSymbol }
         return info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
+
+    /// Not the slashed bolt, which is the pack's way of saying a terminal is off —
+    /// a thing we do not yet know.
+    private static let unknownSymbol = "ellipsis"
 
     var body: some View {
         Card(padding: 0) {
             HStack(alignment: .center, spacing: 20) {
-                MOSButton(title: "Charging",
-                          color: chargeColor,
-                          symbol: chargeSymbol,
-                          isWaiting: mosWrite.isWaiting(for: .charge),
-                          isBusy: mosWrite.isBusy) {
+                GlassPillButton(title: "Charging",
+                                color: chargeColor,
+                                symbol: chargeSymbol,
+                                isWaiting: mosWrite.isWaiting(for: .charge),
+                                isBusy: mosWrite.isBusy) {
                     onChange(MOSChange(terminal: .charge,
                                        charge: !info.chargeMOSEnabled,
                                        discharge: info.dischargeMOSEnabled,
@@ -241,11 +179,11 @@ private struct ButtonBox: View {
                                        question: info.chargeMOSEnabled ? "Disable charging?" : "Enable charging?",
                                        confirmTitle: info.chargeMOSEnabled ? "Disable charging" : "Enable charging"))
                 }
-                MOSButton(title: "Discharging",
-                          color: dischargeColor,
-                          symbol: dischargeSymbol,
-                          isWaiting: mosWrite.isWaiting(for: .discharge),
-                          isBusy: mosWrite.isBusy) {
+                GlassPillButton(title: "Discharging",
+                                color: dischargeColor,
+                                symbol: dischargeSymbol,
+                                isWaiting: mosWrite.isWaiting(for: .discharge),
+                                isBusy: mosWrite.isBusy) {
                     onChange(MOSChange(terminal: .discharge,
                                        charge: info.chargeMOSEnabled,
                                        discharge: !info.dischargeMOSEnabled,
@@ -262,76 +200,14 @@ private struct ButtonBox: View {
     }
 }
 
-private struct MOSButton: View {
-    let title: String
-    let color: Color
-    let symbol: String
-    /// This button is the one waiting for the pack to confirm.
-    let isWaiting: Bool
-    /// Either button is waiting, so neither accepts a tap.
-    let isBusy: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            #if canImport(UIKit)
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            #endif
-            action()
-        } label: {
-            ZStack {
-                background
-                    // 44pt is Apple's minimum comfortable tap target; SBU's 35 was under it.
-                    .frame(width: 152, height: 44)
-                HStack {
-                    Text(title)
-                        .font(.system(size: 17))
-                    // A fixed slot sized to the bolt glyph, so swapping it for the
-                    // spinner neither shifts the label nor changes apparent size.
-                    ZStack {
-                        if isWaiting {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        } else {
-                            Image(systemName: symbol)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        }
-                    }
-                    .frame(width: 24, height: 24)
-                }
-                .foregroundColor(.white)
-            }
-        }
-        // Blocking hit testing rather than .disabled keeps the spinner at full
-        // strength while the button is unavailable.
-        .allowsHitTesting(!isBusy)
-        .opacity(isBusy && !isWaiting ? 0.55 : 1)
-        .animation(.easeInOut(duration: 0.2), value: isWaiting)
-        .animation(.easeInOut(duration: 0.2), value: isBusy)
-        .accessibilityLabel(title)
-        .accessibilityValue(isWaiting ? "Waiting for the BMS" : "")
-    }
-
-    /// Liquid Glass on iOS 26, tinted by the same colour the flat fallback uses, so
-    /// the on/off/gray/blue meaning survives either way.
-    @ViewBuilder
-    private var background: some View {
-        let shape = RoundedRectangle(cornerRadius: 22)
-        if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(.regular.tint(color), in: shape)
-        } else {
-            shape.fill(color)
-        }
-    }
-}
-
 // MARK: - Temperatures and cell extremes
 
 private struct CellTemperatureBox: View {
     let info: BasicInfo
     let summary: CellSummary?
+    /// From the connection rather than from `info`: the estimate leans on the
+    /// readings that came before this one as much as on this one.
+    let remainingHours: Double?
 
     var body: some View {
         HStack {
@@ -340,7 +216,11 @@ private struct CellTemperatureBox: View {
                     HStack(alignment: .top) {
                         Image(systemName: "thermometer")
                             .frame(width: 20, height: 20, alignment: .center)
-                        CircleNumber(number: index + 1)
+                        // The pack's own name for the sensor rather than its position
+                        // in the list: on a JK pack the third one is the MOSFETs, not
+                        // a third probe in the cells, and numbering it "3" said
+                        // otherwise.
+                        CircleLabel(text: info.temperatureLabel(index))
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
@@ -358,12 +238,17 @@ private struct CellTemperatureBox: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if let summary {
+                    // Tinted like the per-cell list below: the weakest cell red, the
+                    // strongest green, and neither while the pack reads flat.
+                    let spread = summary.highest > summary.lowest
                     HStack(alignment: .top) {
                         Image(systemName: "battery.25")
                             .frame(width: 20, height: 20, alignment: .center)
                             .rotationEffect(.degrees(-90))
                         CircleNumber(number: summary.lowestIndex + 1)
-                        Text(summary.lowest.formatted(decimals: 3, unit: "V")).monospacedDigit()
+                        Text(summary.lowest.formatted(decimals: 3, unit: "V"))
+                            .monospacedDigit()
+                            .foregroundStyle(spread ? Color.red : Color.primary)
                         Spacer()
                     }
                     HStack(alignment: .top) {
@@ -371,7 +256,9 @@ private struct CellTemperatureBox: View {
                             .frame(width: 20, height: 20, alignment: .center)
                             .rotationEffect(.degrees(-90))
                         CircleNumber(number: summary.highestIndex + 1)
-                        Text(summary.highest.formatted(decimals: 3, unit: "V")).monospacedDigit()
+                        Text(summary.highest.formatted(decimals: 3, unit: "V"))
+                            .monospacedDigit()
+                            .foregroundStyle(spread ? Color.green : Color.primary)
                         Spacer()
                     }
                     HStack(alignment: .top) {
@@ -382,7 +269,31 @@ private struct CellTemperatureBox: View {
                         Spacer()
                     }
                 }
-                if info.current > 0, let remaining = info.remainingTimeText {
+                if info.isBalancing {
+                    HStack(alignment: .top) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .frame(width: 20, height: 20, alignment: .center)
+                            .foregroundStyle(Color.accentColor)
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(info.balancingText)
+                                .monospacedDigit()
+                            // The rate, on its own line, where the pack gives one
+                            // alongside the direction.
+                            if info.balancingFrom != nil, let rate = info.balanceCurrentText {
+                                Text(rate)
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                }
+                if info.current > 0, let remaining = remainingHours?.asRemainingTime {
                     HStack(alignment: .top) {
                         Image(systemName: "clock.badge.checkmark")
                             .frame(width: 20, height: 20, alignment: .center)
@@ -395,6 +306,7 @@ private struct CellTemperatureBox: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.leading, 4)
+            .animation(.easeInOut(duration: 0.3), value: info.isBalancing)
         }
         .padding(.horizontal)
         .padding(.top)
@@ -407,82 +319,25 @@ private struct CellTemperatureBox: View {
     }
 }
 
-// MARK: - Per-cell voltages
-
-private struct CellVoltageBox: View {
-    let voltages: [Double]
-    let balancing: Set<Int>
-    let summary: CellSummary?
-    let emptyMillivolts: Double
-    let fullMillivolts: Double
-
-    var body: some View {
-        Card {
-            VStack(spacing: 8) {
-                ForEach(Array(voltages.enumerated()), id: \.offset) { index, voltage in
-                    if voltage > 0 {
-                        HStack(alignment: .center) {
-                            Image(systemName: symbol(for: index))
-                                .frame(width: 20, height: 20, alignment: .center)
-                                .rotationEffect(.degrees(-90))
-                            CircleNumber(number: index + 1)
-                                .padding(.trailing, 4)
-                            Text(voltage.formatted(decimals: 3, unit: "V"))
-                                .monospacedDigit()
-                            Spacer(minLength: 30)
-                            Image(systemName: "bolt.fill")
-                                .frame(width: 20, height: 20)
-                                .opacity(balancing.contains(index) ? 1 : 0)
-                                .animation(.easeIn(duration: 0.4), value: balancing.contains(index))
-                            Spacer()
-                            CellVoltageBar(fraction: fraction(for: voltage))
-                                .offset(y: 6)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func symbol(for index: Int) -> String {
-        guard let summary else { return "battery.50" }
-        if index == summary.lowestIndex { return "battery.25" }
-        if index == summary.highestIndex { return "battery.75" }
-        return "battery.50"
-    }
-
-    private func fraction(for voltage: Double) -> Double {
-        let span = fullMillivolts - emptyMillivolts
-        guard span > 0 else { return 0 }
-        return max(0, min((voltage * 1000 - emptyMillivolts) / span, 1))
-    }
-}
-
-private struct CellVoltageBar: View {
-    let fraction: Double
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .foregroundColor(Color.gray.opacity(0.3))
-                    .cornerRadius(10)
-                    .frame(height: 11)
-                Rectangle()
-                    .foregroundColor(Color.accentColor)
-                    .cornerRadius(10)
-                    .frame(width: geometry.size.width * fraction, height: 11)
-            }
-        }
-        .frame(height: 11)
-        .animation(.easeInOut(duration: 0.4), value: fraction)
-    }
-}
-
 // MARK: - Pack identity and protections
 
 private struct BatteryInfoBox: View {
     let info: BasicInfo
+    /// Whether to show the reset button at all, and whether it would accept a tap
+    /// right now. Two separate questions: the button has to stay on screen while the
+    /// reset it started is still running, which is exactly when it refuses taps.
+    let offersClearingAlerts: Bool
+    let canClearAlerts: Bool
+    /// Whether the pack has answered yet. The button is grey until it has, for the
+    /// same reason the MOSFET pair is: nothing in this box means anything before
+    /// the first frame lands.
+    let hasReading: Bool
+    let isClearingAlerts: Bool
+    let clearAlertsOutcome: BMSConnection.WriteOutcome
+    let onClearAlerts: () -> Void
+
+    @State private var confirmingClear = false
+    @State private var showingOutcome = false
 
     var body: some View {
         Card {
@@ -504,6 +359,46 @@ private struct BatteryInfoBox: View {
                         DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .none)
                     } ?? "—")
                 }
+                // Everything below here is shown only by the packs that report it,
+                // rather than as a row of dashes on the ones that do not.
+                if let health = info.stateOfHealth {
+                    HStack {
+                        Text("State of health")
+                        Spacer()
+                        Text("\(health) %").monospacedDigit()
+                    }
+                }
+                if let runtime = info.totalRuntime, runtime > 0 {
+                    HStack {
+                        Text("Total runtime")
+                        Spacer()
+                        Text(runtime.asRuntime).monospacedDigit()
+                    }
+                }
+                if let count = info.powerOnCount, count > 0 {
+                    HStack {
+                        Text("Power-on count")
+                        Spacer()
+                        Text("\(count)").monospacedDigit()
+                    }
+                }
+                if let hardware = info.hardwareVersion, !hardware.isEmpty {
+                    HStack {
+                        Text("Hardware")
+                        Spacer()
+                        Text(hardware)
+                    }
+                }
+                if let serial = info.serialNumber, !serial.isEmpty {
+                    HStack {
+                        Text("Serial number")
+                        Spacer()
+                        Text(serial)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if !info.protections.isEmpty {
                     Divider()
                     ForEach(info.protections.sorted { $0.rawValue < $1.rawValue }) { protection in
@@ -515,7 +410,68 @@ private struct BatteryInfoBox: View {
                         }
                     }
                 }
+                if offersClearingAlerts {
+                    GlassPillButton(title: "Reset alerts",
+                                    color: hasReading ? .red : .gray,
+                                    symbol: "exclamationmark.triangle",
+                                    isWaiting: isClearingAlerts,
+                                    isBusy: !canClearAlerts,
+                                    size: .small) {
+                        confirmingClear = true
+                    }
+                    .padding(.top, 2)
+                    // The pill is drawn 36pt tall inside a 44pt tap target, so there
+                    // is a band of empty target under it before the card's own
+                    // padding even starts. Taking that back closes the gap the button
+                    // was floating in — but not when the outcome note follows it,
+                    // which needs the room.
+                    .padding(.bottom, showingOutcome ? 0 : -8)
+                    if showingOutcome {
+                        outcomeNote
+                    }
+                }
             }
         }
+        .confirmationDialog("⚠️ Reset the stored alerts?",
+                            isPresented: $confirmingClear,
+                            titleVisibility: .visible) {
+            Button("Reset alerts", role: .destructive, action: onClearAlerts)
+            Button("Cancel", role: .cancel) { confirmingClear = false }
+        } message: {
+            Text("This wipes the fault record the BMS keeps, and cannot be undone. A protection that is still tripped comes straight back on the next reading.")
+        }
+        // A refusal stays up — it is the only place it is explained. Success bows out
+        // on its own rather than sitting on a dashboard that is meant to be watched.
+        .task(id: clearAlertsOutcome) {
+            guard clearAlertsOutcome != .idle else {
+                showingOutcome = false
+                return
+            }
+            showingOutcome = true
+            guard clearAlertsOutcome == .succeeded else { return }
+            try? await Task.sleep(for: .seconds(4))
+            showingOutcome = false
+        }
+    }
+
+    /// The line under the button, once there is something to say about the last reset.
+    @ViewBuilder
+    private var outcomeNote: some View {
+        switch clearAlertsOutcome {
+        case .idle:
+            EmptyView()
+        case .succeeded:
+            note("The BMS cleared its stored alerts.", tint: .green)
+        case .rejected(let message):
+            note(message, tint: .red)
+        }
+    }
+
+    private func note(_ message: String, tint: Color) -> some View {
+        Text(message)
+            .font(.footnote)
+            .foregroundStyle(tint)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
     }
 }
