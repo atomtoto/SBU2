@@ -43,6 +43,7 @@ struct OverviewView: View {
                 }
                 CellTemperatureBox(info: connection.info,
                                    summary: connection.cellSummary,
+                                   temperatureSummary: connection.temperatureSummary,
                                    remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
@@ -205,16 +206,24 @@ private struct ButtonBox: View {
 private struct CellTemperatureBox: View {
     let info: BasicInfo
     let summary: CellSummary?
+    let temperatureSummary: TemperatureSummary?
     /// From the connection rather than from `info`: the estimate leans on the
     /// readings that came before this one as much as on this one.
     let remainingHours: Double?
+
+    private func symbol(for index: Int) -> String {
+        guard let temperatureSummary else { return "thermometer" }
+        if index == temperatureSummary.lowestIndex { return "thermometer.low" }
+        if index == temperatureSummary.highestIndex { return "thermometer.high" }
+        return "thermometer"
+    }
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
                     HStack(alignment: .top) {
-                        Image(systemName: "thermometer")
+                        Image(systemName: symbol(for: index))
                             .frame(width: 20, height: 20, alignment: .center)
                         // The pack's own name for the sensor rather than its position
                         // in the list: on a JK pack the third one is the MOSFETs, not
@@ -266,6 +275,32 @@ private struct CellTemperatureBox: View {
                             .frame(width: 20, height: 20, alignment: .center)
                         Spacer(minLength: 8)
                         Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
+                        Spacer()
+                    }
+                }
+                if let temperatureSummary {
+                    HStack(alignment: .top) {
+                        Image(systemName: "thermometer.low")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        CircleLabel(text: info.temperatureLabel(temperatureSummary.lowestIndex))
+                        Text(info.temperatureText(temperatureSummary.lowest))
+                            .monospacedDigit()
+                        Spacer()
+                    }
+                    HStack(alignment: .top) {
+                        Image(systemName: "thermometer.high")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        CircleLabel(text: info.temperatureLabel(temperatureSummary.highestIndex))
+                        Text(info.temperatureText(temperatureSummary.highest))
+                            .monospacedDigit()
+                        Spacer()
+                    }
+                    HStack(alignment: .top) {
+                        Text("△")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        Spacer(minLength: 8)
+                        Text("△" + String(format: "%.1f °C", temperatureSummary.delta))
+                            .monospacedDigit()
                         Spacer()
                     }
                 }
