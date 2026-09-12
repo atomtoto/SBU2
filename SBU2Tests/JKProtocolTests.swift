@@ -162,6 +162,31 @@ struct JKCellInfoTests {
         #expect(abs(info.residualCapacity / info.nominalCapacity * 100 - 84) < 1)
     }
 
+    @Test("The balancer is reported as a state and a current, never as a cell")
+    func balancing() throws {
+        // The captured frame has the balancer idle.
+        let resting = try #require(JK.decodeCellInfo(Fixtures.cellInfo24, .cells24))
+        #expect(!resting.balancerActive)
+        #expect(!resting.isBalancing)
+        #expect(resting.balancingCells.isEmpty)
+
+        // Working, shunting 0.3 A. JK never says which cell, so the set stays empty
+        // and the figure is what gets shown.
+        var frame = Fixtures.cellInfo24
+        frame[138] = 0x2C            // 300 mA, little-endian
+        frame[139] = 0x01
+        frame[140] = 0x01            // balancing while charging
+        frame[299] = JK.checksum(frame[0..<299])
+
+        let working = try #require(JK.decodeCellInfo(frame, .cells24))
+        #expect(working.balancerActive)
+        #expect(working.isBalancing)
+        #expect(working.balancingCells.isEmpty)
+        #expect(abs((working.balanceCurrent ?? 0) - 0.300) < 0.0005)
+        #expect(working.balancingText.hasSuffix(" A"))
+        #expect(working.balancingText.contains("300"))
+    }
+
     @Test("Cell voltages come back in order, with the unpopulated ones left at zero")
     func decodesCellVoltages() {
         let voltages = JK.cellVoltages(Fixtures.cellInfo24, .cells24)

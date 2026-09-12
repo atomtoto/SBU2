@@ -213,6 +213,43 @@ struct JBDAdapterTests {
     }
 }
 
+@Suite("Balancing")
+struct BalancingTests {
+
+    @Test("A pack that names its balancing cells is described by naming them")
+    func namedCells() {
+        // JBD's way: which cells, never how much.
+        var info = BasicInfo()
+        info.balancingCells = [1]
+        #expect(info.isBalancing)
+        #expect(info.balancingText == "Cell 2")
+
+        info.balancingCells = [1, 4]
+        #expect(info.balancingText == "Cells 2, 5")
+    }
+
+    @Test("A pack that only says how hard it is working is described that way")
+    func currentOnly() {
+        // JK's way: how much, never which.
+        var info = BasicInfo()
+        info.balancerActive = true
+        info.balanceCurrent = 0.3
+        #expect(info.isBalancing)
+        #expect(info.balancingText.hasSuffix("A"))
+
+        // Working but shunting nothing worth printing.
+        info.balanceCurrent = 0
+        #expect(info.isBalancing)
+        #expect(info.balancingText == "Balancing")
+    }
+
+    @Test("A pack doing neither says nothing")
+    func idle() {
+        let info = BasicInfo()
+        #expect(!info.isBalancing)
+    }
+}
+
 @Suite("Protocol registry")
 struct BMSProtocolRegistryTests {
 

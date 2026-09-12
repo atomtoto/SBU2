@@ -173,9 +173,12 @@ enum JK {
         info.cellCount = cellVoltages(frame, variant).filter { $0 > 0 }.count
         info.temperatures = temperatures(frame, variant)
         info.protections = protections(faults(frame, variant))
-        // JK reports that the balancer is working and how much it is moving, but not
-        // which cell it is working on, so nothing can be filled in here.
+        // JK says the balancer is working and how much it is shunting, but never
+        // which cell it is working on — so the per-cell set stays empty and the box
+        // shows the state and the current instead of a bolt against one figure.
         info.balancingCells = []
+        info.balancerActive = frame[140 + late] != 0
+        info.balanceCurrent = Double(int16(frame, 138 + late)) / 1000
         return info
     }
 

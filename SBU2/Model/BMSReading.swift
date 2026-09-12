@@ -78,6 +78,16 @@ struct BasicInfo: Equatable {
     var cellCount: Int = 0
     var temperatures: [Double] = []      // °C
 
+    /// Whether the balancer is working, for a family that reports it as a state of
+    /// the pack rather than as a set of cells. JBD names the cells and leaves this
+    /// alone; JK says only that it is working, and how hard.
+    var balancerActive = false
+    /// Amps the balancer is shunting, or `nil` where the family does not say.
+    var balanceCurrent: Double?
+
+    /// Whether anything is being balanced at all, however the family says so.
+    var isBalancing: Bool { balancerActive || !balancingCells.isEmpty }
+
     var power: Double { packVoltage * current }
 
     /// Requires at least the fixed part of the frame: 23 bytes plus 2 per temperature sensor.

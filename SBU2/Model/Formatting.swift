@@ -37,6 +37,24 @@ extension BasicInfo {
 
     var stateOfChargeText: String { "\(stateOfCharge) %" }
 
+    /// What the pack says about its balancer.
+    ///
+    /// Two families, two different things to say. JK reports how hard the balancer is
+    /// working but not where, so the current is the useful figure. JBD names the cells
+    /// but never the current, and those cells already carry a bolt in the list below —
+    /// so naming them here says which ones without making anyone hunt for the icon.
+    var balancingText: String {
+        if let balanceCurrent, abs(balanceCurrent) >= 0.001 {
+            return abs(balanceCurrent).formatted(decimals: 3, unit: "A")
+        }
+        let numbered = balancingCells.sorted().map { String($0 + 1) }
+        switch numbered.count {
+        case 0: return "Balancing"
+        case 1: return "Cell " + numbered[0]
+        default: return "Cells " + numbered.joined(separator: ", ")
+        }
+    }
+
     func temperatureText(_ celsius: Double) -> String {
         let measurement = Measurement(value: celsius, unit: UnitTemperature.celsius)
             .converted(to: Locale.current.preferredTemperatureUnit)

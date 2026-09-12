@@ -86,31 +86,59 @@ struct CellVoltageBox: View {
     // MARK: - Figures only
 
     private var compactLayout: some View {
-        // As many columns as the width allows rather than a fixed number, so the
-        // same layout serves a four-cell pack and a thirty-two-cell one.
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                  alignment: .leading,
-                  spacing: 8) {
+        // Columns are still fitted to the width rather than fixed, but a short string
+        // of cells asks for wider ones and gets a bigger figure in them: four cells
+        // spread across three columns left one hanging on a row of its own and set in
+        // the smallest type on the screen, which is the opposite of what all that
+        // spare width was for.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: compactWidth), spacing: 10)],
+                  alignment: .center,
+                  spacing: 10) {
             ForEach(cells) { cell in
                 HStack(spacing: 5) {
                     Text("\(cell.index + 1)")
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(size: compactFontSize * 0.72, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                        .frame(minWidth: 18, alignment: .trailing)
                     Text(cell.voltage.formatted(decimals: 3, unit: "V"))
-                        .font(.footnote.weight(.semibold))
+                        .font(.system(size: compactFontSize, weight: .semibold))
                         .monospacedDigit()
                         .foregroundStyle(tint(for: cell.index))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Image(systemName: "bolt.fill")
-                        .font(.caption2)
-                        .opacity(balancing.contains(cell.index) ? 1 : 0)
-                        .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
+                        .minimumScaleFactor(0.7)
+                    if balancing.contains(cell.index) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: compactFontSize * 0.72))
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(.easeIn(duration: 0.4), value: balancing.contains(cell.index))
+                // Centred in its column rather than pushed to the leading edge, so
+                // the figures sit evenly across the card instead of drifting left.
+                .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    /// How much width each figure asks for, and how large it is set.
+    ///
+    /// Both follow the length of the string rather than a fixed choice: a pack with a
+    /// handful of cells has width to spare and should use it, and one with two dozen
+    /// needs every column it can get. The two move together because a figure given
+    /// more room is only better if it is also easier to read.
+    private var compactWidth: CGFloat {
+        switch cells.count {
+        case ...6: 150
+        case ...12: 112
+        default: 92
+        }
+    }
+
+    private var compactFontSize: CGFloat {
+        switch cells.count {
+        case ...6: 20
+        case ...12: 16
+        default: 14
         }
     }
 

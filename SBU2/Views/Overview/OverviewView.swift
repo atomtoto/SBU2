@@ -265,6 +265,20 @@ private struct CellTemperatureBox: View {
                         Spacer()
                     }
                 }
+                if info.isBalancing {
+                    HStack(alignment: .top) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .frame(width: 20, height: 20, alignment: .center)
+                            .foregroundStyle(Color.accentColor)
+                        Spacer(minLength: 8)
+                        Text(info.balancingText)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                }
                 if info.current > 0, let remaining = remainingHours?.asRemainingTime {
                     HStack(alignment: .top) {
                         Image(systemName: "clock.badge.checkmark")
@@ -278,6 +292,7 @@ private struct CellTemperatureBox: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.leading, 4)
+            .animation(.easeInOut(duration: 0.3), value: info.isBalancing)
         }
         .padding(.horizontal)
         .padding(.top)
