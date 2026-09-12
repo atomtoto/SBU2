@@ -216,7 +216,11 @@ private struct CellTemperatureBox: View {
                     HStack(alignment: .top) {
                         Image(systemName: "thermometer")
                             .frame(width: 20, height: 20, alignment: .center)
-                        CircleNumber(number: index + 1)
+                        // The pack's own name for the sensor rather than its position
+                        // in the list: on a JK pack the third one is the MOSFETs, not
+                        // a third probe in the cells, and numbering it "3" said
+                        // otherwise.
+                        CircleLabel(text: info.temperatureLabel(index))
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
@@ -271,10 +275,20 @@ private struct CellTemperatureBox: View {
                             .frame(width: 20, height: 20, alignment: .center)
                             .foregroundStyle(Color.accentColor)
                         Spacer(minLength: 8)
-                        Text(info.balancingText)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(info.balancingText)
+                                .monospacedDigit()
+                            // The rate, on its own line, where the pack gives one
+                            // alongside the direction.
+                            if info.balancingFrom != nil, let rate = info.balanceCurrentText {
+                                Text(rate)
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         Spacer()
                     }
                     .transition(.opacity)
@@ -344,6 +358,46 @@ private struct BatteryInfoBox: View {
                     Text(info.productionDate.map {
                         DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .none)
                     } ?? "—")
+                }
+                // Everything below here is shown only by the packs that report it,
+                // rather than as a row of dashes on the ones that do not.
+                if let health = info.stateOfHealth {
+                    HStack {
+                        Text("State of health")
+                        Spacer()
+                        Text("\(health) %").monospacedDigit()
+                    }
+                }
+                if let runtime = info.totalRuntime, runtime > 0 {
+                    HStack {
+                        Text("Total runtime")
+                        Spacer()
+                        Text(runtime.asRuntime).monospacedDigit()
+                    }
+                }
+                if let count = info.powerOnCount, count > 0 {
+                    HStack {
+                        Text("Power-on count")
+                        Spacer()
+                        Text("\(count)").monospacedDigit()
+                    }
+                }
+                if let hardware = info.hardwareVersion, !hardware.isEmpty {
+                    HStack {
+                        Text("Hardware")
+                        Spacer()
+                        Text(hardware)
+                    }
+                }
+                if let serial = info.serialNumber, !serial.isEmpty {
+                    HStack {
+                        Text("Serial number")
+                        Spacer()
+                        Text(serial)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 if !info.protections.isEmpty {
                     Divider()

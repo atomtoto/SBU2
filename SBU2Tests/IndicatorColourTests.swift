@@ -36,6 +36,17 @@ struct IndicatorColourTests {
         #expect(Color.stateOfChargeTrip(30) == .green)
     }
 
+    @Test("A runtime is printed in the two largest units it has")
+    func runtime() {
+        #expect(TimeInterval(0).asRuntime == "0 h 0 min")
+        #expect(TimeInterval(3_600 * 5 + 60 * 7).asRuntime == "5 h 7 min")
+        #expect(TimeInterval(86_400 * 3 + 3_600 * 4).asRuntime == "3 d 4 h")
+        // 1 y 129 d, which is what a pack running since 2023 reads.
+        #expect(TimeInterval(86_400 * 494).asRuntime == "1 y 129 d")
+        // Nothing runs for a negative length of time, but nothing crashes either.
+        #expect(TimeInterval(-5).asRuntime == "0 h 0 min")
+    }
+
     @Test("Every cell voltage style is labelled and none share a label")
     func cellVoltageStylesAreDistinct() {
         let labels = CellVoltageStyle.allCases.map(\.label)

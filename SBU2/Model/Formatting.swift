@@ -39,11 +39,15 @@ extension BasicInfo {
 
     /// What the pack says about its balancer.
     ///
-    /// Two families, two different things to say. JK reports how hard the balancer is
-    /// working but not where, so the current is the useful figure. JBD names the cells
-    /// but never the current, and those cells already carry a bolt in the list below —
-    /// so naming them here says which ones without making anyone hunt for the icon.
+    /// Where the two ends of the string are named — JK gives them outright — this
+    /// reads as the direction charge is moving, which is the thing worth knowing: off
+    /// the full cell and into the flat one. Otherwise it falls back to whichever of
+    /// the two other things the family does say: how hard the balancer is working, or
+    /// which cells it is working on.
     var balancingText: String {
+        if let from = balancingFrom, let to = balancingTo {
+            return "\(from + 1) → \(to + 1)"
+        }
         if let balanceCurrent, abs(balanceCurrent) >= 0.001 {
             return abs(balanceCurrent).formatted(decimals: 3, unit: "A")
         }
@@ -53,6 +57,18 @@ extension BasicInfo {
         case 1: return "Cell " + numbered[0]
         default: return "Cells " + numbered.joined(separator: ", ")
         }
+    }
+
+    /// The balancer's own current, where the pack reports one worth printing.
+    var balanceCurrentText: String? {
+        guard let balanceCurrent, abs(balanceCurrent) >= 0.001 else { return nil }
+        return abs(balanceCurrent).formatted(decimals: 3, unit: "A")
+    }
+
+    /// What to put beside one temperature: the pack's own name for it where it has
+    /// one, and its position in the list where it does not.
+    func temperatureLabel(_ index: Int) -> String {
+        index < temperatureLabels.count ? temperatureLabels[index] : String(index + 1)
     }
 
     func temperatureText(_ celsius: Double) -> String {
@@ -79,6 +95,24 @@ extension BasicInfo {
         }
     }
 
+}
+
+extension TimeInterval {
+    /// A span of years and days, or days and hours, or hours and minutes.
+    ///
+    /// A pack that has been running for over a year does not need the seconds it has
+    /// been running for, and the two largest units it has are always the two worth
+    /// printing.
+    var asRuntime: String {
+        let total = Int(max(self, 0))
+        let (days, hours) = (total / 86_400, total % 86_400 / 3_600)
+        if days >= 365 {
+            let (years, remainder) = (days / 365, days % 365)
+            return "\(years) y \(remainder) d"
+        }
+        if days > 0 { return "\(days) d \(hours) h" }
+        return "\(hours) h \(total % 3_600 / 60) min"
+    }
 }
 
 extension Double {

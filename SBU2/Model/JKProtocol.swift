@@ -173,13 +173,38 @@ enum JK {
         info.cellCount = cellVoltages(frame, variant).filter { $0 > 0 }.count
         info.temperatures = temperatures(frame, variant)
         info.protections = protections(faults(frame, variant))
-        // JK says the balancer is working and how much it is shunting, but never
-        // which cell it is working on — so the per-cell set stays empty and the box
-        // shows the state and the current instead of a bolt against one figure.
-        info.balancingCells = []
+        info.stateOfHealth = Int(frame[158 + late])
+        info.totalRuntime = TimeInterval(uint32(frame, 162 + late))
+        info.temperatureLabels = ["1", "2", "MOS"]
+        applyBalancing(&info, frame, variant)
+        return info
+    }
+
+    /// What the balancer is doing, and between which two cells.
+    ///
+    /// There is no per-cell bitmask in this frame — but there does not need to be.
+    /// A balancer works between the ends of the string, and the frame names both
+    /// ends outright: the highest cell at 62 and the lowest at 63, counted from
+    /// zero. Charge comes off the high one and goes to the low one, so those two are
+    /// the cells being balanced, and marking them is what puts the bolt beside the
+    /// right figures rather than beside none of them.
+    private static func applyBalancing(_ info: inout BasicInfo,
+                                       _ frame: [UInt8],
+                                       _ variant: Variant) {
+        let late = variant.lateShift
         info.balancerActive = frame[140 + late] != 0
         info.balanceCurrent = Double(int16(frame, 138 + late)) / 1000
-        return info
+
+        let highest = Int(frame[62 + variant.shift])
+        let lowest = Int(frame[63 + variant.shift])
+        let populated = 0..<variant.cellCount
+        guard info.balancerActive,
+              populated.contains(highest), populated.contains(lowest), highest != lowest
+        else { return }
+
+        info.balancingFrom = highest
+        info.balancingTo = lowest
+        info.balancingCells = [highest, lowest]
     }
 
     /// The two probes and the MOSFET sensor, in the order the pack numbers them.
@@ -242,6 +267,8 @@ enum JK {
         var model = ""
         var hardwareVersion = ""
         var softwareVersion = ""
+        var serialNumber = ""
+        var powerOnCount = 0
         var productionDate: Date?
     }
 
@@ -251,6 +278,8 @@ enum JK {
         identity.model = string(frame, at: 6, length: 16)
         identity.hardwareVersion = string(frame, at: 22, length: 8)
         identity.softwareVersion = string(frame, at: 30, length: 8)
+        identity.powerOnCount = Int(uint32(frame, 42))
+        identity.serialNumber = string(frame, at: 86, length: 11)
         identity.productionDate = productionDate(string(frame, at: 78, length: 6))
         return identity
     }

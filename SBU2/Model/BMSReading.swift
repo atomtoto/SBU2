@@ -79,14 +79,31 @@ struct BasicInfo: Equatable {
     var temperatures: [Double] = []      // °C
 
     /// Whether the balancer is working, for a family that reports it as a state of
-    /// the pack rather than as a set of cells. JBD names the cells and leaves this
-    /// alone; JK says only that it is working, and how hard.
+    /// the pack rather than as a set of cells.
     var balancerActive = false
     /// Amps the balancer is shunting, or `nil` where the family does not say.
     var balanceCurrent: Double?
+    /// The cell charge is being taken from and the one it is going to, where the pack
+    /// names them. A balancer works between the two ends of the string, so these are
+    /// the highest and lowest cells — which JK reports outright rather than leaving
+    /// to be worked out.
+    var balancingFrom: Int?
+    var balancingTo: Int?
 
     /// Whether anything is being balanced at all, however the family says so.
     var isBalancing: Bool { balancerActive || !balancingCells.isEmpty }
+
+    /// What the pack has left of its original capacity, as a percentage.
+    var stateOfHealth: Int?
+    /// How long the pack has been powered in total.
+    var totalRuntime: TimeInterval?
+    /// How many times it has been switched on.
+    var powerOnCount: Int?
+    var serialNumber: String?
+    var hardwareVersion: String?
+    /// What each temperature reading is, in the order `temperatures` gives them. A
+    /// family that only has numbered probes leaves this empty and they are numbered.
+    var temperatureLabels: [String] = []
 
     var power: Double { packVoltage * current }
 

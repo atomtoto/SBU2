@@ -181,10 +181,63 @@ struct JKCellInfoTests {
         let working = try #require(JK.decodeCellInfo(frame, .cells24))
         #expect(working.balancerActive)
         #expect(working.isBalancing)
-        #expect(working.balancingCells.isEmpty)
         #expect(abs((working.balanceCurrent ?? 0) - 0.300) < 0.0005)
-        #expect(working.balancingText.hasSuffix(" A"))
-        #expect(working.balancingText.contains("300"))
+
+        // The captured frame names the same cell as both the highest and the lowest,
+        // which says nothing about a direction, so none is claimed.
+        #expect(frame[62] == frame[63])
+        #expect(working.balancingFrom == nil)
+    }
+
+    @Test("The two cells the balancer works between come straight out of the frame")
+    func balancingDirection() throws {
+        var frame = Fixtures.cellInfo24
+        frame[140] = 0x01            // balancer working
+        frame[62] = 4                // highest cell: index 4, shown as 5
+        frame[63] = 1                // lowest cell: index 1, shown as 2
+        frame[299] = JK.checksum(frame[0..<299])
+
+        let info = try #require(JK.decodeCellInfo(frame, .cells24))
+        #expect(info.balancingFrom == 4)
+        #expect(info.balancingTo == 1)
+        // Both ends carry a bolt in the cell list, which is what the set is for.
+        #expect(info.balancingCells == [1, 4])
+        #expect(info.balancingText == "5 → 2")
+    }
+
+    @Test("An idle balancer names no cells, however the frame reads")
+    func idleBalancerNamesNothing() throws {
+        var frame = Fixtures.cellInfo24
+        frame[140] = 0x00            // balancer idle
+        frame[62] = 4
+        frame[63] = 1
+        frame[299] = JK.checksum(frame[0..<299])
+
+        let info = try #require(JK.decodeCellInfo(frame, .cells24))
+        #expect(!info.isBalancing)
+        #expect(info.balancingFrom == nil)
+        #expect(info.balancingCells.isEmpty)
+    }
+
+    @Test("The third temperature is the MOSFETs, and says so")
+    func temperatureNames() throws {
+        let info = try #require(JK.decodeCellInfo(Fixtures.cellInfo24, .cells24))
+        #expect(info.temperatureLabel(0) == "1")
+        #expect(info.temperatureLabel(1) == "2")
+        #expect(info.temperatureLabel(2) == "MOS")
+
+        // A family that only numbers its probes falls back to the position.
+        var plain = BasicInfo()
+        plain.temperatures = [20, 21]
+        #expect(plain.temperatureLabel(0) == "1")
+        #expect(plain.temperatureLabel(1) == "2")
+    }
+
+    @Test("The pack's own record of itself is read where it keeps one")
+    func health() throws {
+        let info = try #require(JK.decodeCellInfo(Fixtures.cellInfo24, .cells24))
+        #expect(info.stateOfHealth == 100)
+        #expect((info.totalRuntime ?? 0) > 0)
     }
 
     @Test("Cell voltages come back in order, with the unpopulated ones left at zero")

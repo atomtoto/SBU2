@@ -201,6 +201,9 @@ final class JKAdapter: BMSProtocolAdapter {
             // carried across rather than left blank on every reading.
             info.softwareVersion = identity?.softwareVersion ?? ""
             info.productionDate = identity?.productionDate
+            info.hardwareVersion = identity?.hardwareVersion
+            info.serialNumber = identity?.serialNumber
+            info.powerOnCount = identity?.powerOnCount
             return [BMSEvent(register: type.rawValue, kind: .basicInfo(info)),
                     BMSEvent(register: type.rawValue,
                              kind: .cellVoltages(JK.cellVoltages(frame, layout)))]
