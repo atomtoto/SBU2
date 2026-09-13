@@ -42,8 +42,7 @@ struct OverviewView: View {
                     ChargeBox(settings: $connection.settings)
                 }
                 CellTemperatureBox(info: connection.info,
-                                   summary: connection.cellSummary,
-                                   temperatureSummary: connection.temperatureSummary)
+                                   summary: connection.cellSummary)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
                                    balancing: connection.info.balancingCells,
@@ -333,21 +332,13 @@ private struct MOSButton: View {
 private struct CellTemperatureBox: View {
     let info: BasicInfo
     let summary: CellSummary?
-    let temperatureSummary: TemperatureSummary?
-
-    private func symbol(for index: Int) -> String {
-        guard let temperatureSummary else { return "thermometer" }
-        if index == temperatureSummary.lowestIndex { return "thermometer.low" }
-        if index == temperatureSummary.highestIndex { return "thermometer.high" }
-        return "thermometer"
-    }
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
                     HStack(alignment: .top) {
-                        Image(systemName: symbol(for: index))
+                        Image(systemName: "thermometer")
                             .frame(width: 20, height: 20, alignment: .center)
                         CircleNumber(number: index + 1)
                             .padding(.trailing, 4)
@@ -388,32 +379,6 @@ private struct CellTemperatureBox: View {
                             .frame(width: 20, height: 20, alignment: .center)
                         Spacer(minLength: 8)
                         Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
-                        Spacer()
-                    }
-                }
-                if let temperatureSummary {
-                    HStack(alignment: .top) {
-                        Image(systemName: "thermometer.low")
-                            .frame(width: 20, height: 20, alignment: .center)
-                        CircleNumber(number: temperatureSummary.lowestIndex + 1)
-                        Text(info.temperatureText(temperatureSummary.lowest))
-                            .monospacedDigit()
-                        Spacer()
-                    }
-                    HStack(alignment: .top) {
-                        Image(systemName: "thermometer.high")
-                            .frame(width: 20, height: 20, alignment: .center)
-                        CircleNumber(number: temperatureSummary.highestIndex + 1)
-                        Text(info.temperatureText(temperatureSummary.highest))
-                            .monospacedDigit()
-                        Spacer()
-                    }
-                    HStack(alignment: .top) {
-                        Text("△")
-                            .frame(width: 20, height: 20, alignment: .center)
-                        Spacer(minLength: 8)
-                        Text("△" + String(format: "%.1f °C", temperatureSummary.delta))
-                            .monospacedDigit()
                         Spacer()
                     }
                 }

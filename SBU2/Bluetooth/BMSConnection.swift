@@ -79,7 +79,6 @@ final class BMSConnection: NSObject {
     }
 
     var cellSummary: CellSummary? { CellSummary(voltages: cellVoltages) }
-    var temperatureSummary: TemperatureSummary? { TemperatureSummary(temperatures: info.temperatures) }
 
     // MARK: Internals
 
