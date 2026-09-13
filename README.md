@@ -1,6 +1,6 @@
 # SBU2
 
-Application iOS en SwiftUI pour lire et piloter un BMS **JBD** ou *JK* via son module Bluetooth LE.
+Application iOS en SwiftUI pour lire et piloter un BMS **JBD** (aka Xiaoxiang) ou **JK** via son module Bluetooth LE.
 
 Tout le code est neuf et repose
 uniquement sur SwiftUI, `Observation` et CoreBluetooth.
