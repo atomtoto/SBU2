@@ -1,16 +1,13 @@
 # SBU2
 
-Application iOS minimaliste en SwiftUI pour lire et piloter un BMS **JBD**
-(aussi vendu sous les noms Xiaoxiang, Overkill Solar, LLT Power…) via son
-module Bluetooth LE.
+Application iOS en SwiftUI pour lire et piloter un BMS **JBD** ou *JK* via son module Bluetooth LE.
 
-Réécriture depuis zéro de [SBU](https://github.com/atomtoto/SBU) : seule la
-connaissance du protocole a été reprise, tout le code est neuf et repose
+Tout le code est neuf et repose
 uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 
 ## Fonctionnalités
 
-- Recherche des modules JBD à proximité (service BLE `FF00`) et connexion.
+- Recherche des modules JBD/JK à proximité et connexion.
 - Rafraîchissement automatique une fois par seconde, avec reconnexion
   automatique si le dongle coupe la liaison.
 - Tension du pack, courant, puissance, état de charge, capacité restante et
@@ -24,7 +21,7 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 
 - Xcode 16 ou ultérieur.
 - iOS 26 minimum.
-- Un iPhone ou iPad **réel** : le simulateur n'expose pas de Bluetooth LE.
+- Un iPhone, iPad ou Mac **réel** : le simulateur n'expose pas de Bluetooth LE.
 
 ## Compilation
 
@@ -75,7 +72,7 @@ BLE, et une fabrique. Ajouter une famille revient donc à écrire un adaptateur 
 automatiquement son service, et aucune vue ne change. La famille retenue est
 mémorisée par appareil (`DeviceSettings.protocolID`).
 
-Seul JBD est implémenté aujourd'hui.
+Seul JBD et JK sont implémentés aujourd'hui.
 
 ## Une commande à la fois
 
@@ -113,9 +110,8 @@ Registres utilisés :
 
 - La lecture et l'écriture de la configuration complète (seuils de protection,
   capacités, paramètres d'équilibrage) ne sont pas reprises.
-- L'enregistrement des mesures et les graphiques (onglet Logging de SBU) ne sont
+- L'enregistrement des mesures et les graphiques ne sont
   pas repris.
-- La limite de charge est réglable mais n'agit sur rien, exactement comme dans
-  SBU : aucun code ne lit `chargeLimitSOC` en dehors de l'interface.
-- L'interface est en anglais, comme l'application d'origine. Une localisation
-  française viendra plus tard.
+- La limite de charge est réglable mais n'agit sur rien : aucun code ne lit `chargeLimitSOC` en dehors de l'interface.
+- L'interface est en anglais. Une localisation
+  française et autres viendra plus tard.
