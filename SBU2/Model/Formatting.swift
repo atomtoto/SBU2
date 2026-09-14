@@ -130,7 +130,12 @@ extension Double {
     }
 }
 
-/// Per-cell figures derived from the voltage frame.
+/// The two ends of a per-cell figure, and its mean.
+///
+/// Built from the voltages nearly everywhere, which is what the parameter is named
+/// after — but there is nothing about volts in the arithmetic, so the wire
+/// resistances go through it just as well and come out meaning the worst and the best
+/// connection rather than the weakest and the strongest cell.
 struct CellSummary {
     var lowestIndex: Int
     var highestIndex: Int
@@ -140,6 +145,8 @@ struct CellSummary {
     /// its cell count — and a fair bit steadier than either extreme.
     var average: Double
 
+    /// The spread, in thousandths of whatever unit went in: millivolts for the cell
+    /// voltages, milliohms when the resistances were passed instead.
     var deltaMillivolts: Double { (highest - lowest) * 1000 }
 
     init?(voltages: [Double]) {

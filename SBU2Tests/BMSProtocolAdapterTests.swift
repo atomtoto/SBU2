@@ -271,6 +271,23 @@ struct CellReadoutTests {
         #expect(spread.highest > spread.lowest)
         #expect(abs(spread.deltaMillivolts - 10) < 0.001)
     }
+
+    @Test("The same summary read as resistances names the worst and the best connection")
+    func wiringEnds() throws {
+        // The pack summary switches to these two rows when the resistance readout is
+        // chosen, and it builds them with the very same code: the figures go in, the
+        // two ends and the spread come out, and the unit is the caller's business.
+        // Cell 2 is the one with the resistive link; cell 4 has the best of them.
+        let wiring = try #require(CellSummary(voltages: [0.385, 0.412, 0.388, 0.379, 0]))
+        #expect(wiring.highestIndex == 1)
+        #expect(wiring.lowestIndex == 3)
+        // Thousandths of an ohm here, thousandths of a volt there — the arithmetic
+        // does not know the difference.
+        #expect(abs(wiring.deltaMillivolts - 33) < 0.001)
+        // The cells past the end of the string report zero and are not counted, which
+        // is what stops an unpopulated slot from being named the best connection.
+        #expect(wiring.lowest == 0.379)
+    }
 }
 
 @Suite("Protocol registry")

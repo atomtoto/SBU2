@@ -15,6 +15,9 @@ struct OverviewView: View {
     @Environment(AppSettings.self) private var appSettings
 
     @State private var confirmation: MOSChange?
+    /// Which per-cell figure the two lower boxes are showing. Held here rather than in
+    /// the box with the picker, because the summary above follows the same choice.
+    @State private var readout: CellReadout = .voltages
 
     var body: some View {
         @Bindable var connection = connection
@@ -43,13 +46,16 @@ struct OverviewView: View {
                 }
                 PackSummaryBox(info: connection.info,
                                summary: connection.cellSummary,
+                               resistances: connection.cellResistances,
+                               readout: readout,
                                remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
                                    resistances: connection.cellResistances,
                                    balancing: connection.info.balancingCells,
                                    summary: connection.cellSummary,
-                                   settings: $connection.settings)
+                                   settings: $connection.settings,
+                                   readout: $readout)
                 }
                 BatteryInfoBox(info: connection.info,
                                offersClearingAlerts: connection.offersClearingAlerts,
@@ -91,6 +97,12 @@ struct OverviewView: View {
             Button("Cancel", role: .cancel) { confirmation = nil }
         } message: {
             Text("This command is written to the BMS and really cuts the current on that terminal. You can turn this warning off in Settings.")
+        }
+        // A pack that stops reporting its wiring — or one that never did, opened after
+        // one that did — must not leave the screen asking for a readout that is not
+        // there any more.
+        .onChange(of: connection.cellResistances.isEmpty) { _, gone in
+            if gone { readout = .voltages }
         }
     }
 
@@ -210,6 +222,12 @@ private struct ButtonBox: View {
 private struct PackSummaryBox: View {
     let info: BasicInfo
     let summary: CellSummary?
+    /// The wire resistances, where the pack measures them, and which of the two
+    /// readouts the box below is showing. The two ends named here follow that choice:
+    /// ask for resistances and this names the worst and the best connection instead of
+    /// the weakest and the strongest cell.
+    var resistances: [Double] = []
+    var readout: CellReadout = .voltages
     /// From the connection rather than from `info`: the estimate leans on the
     /// readings that came before this one as much as on this one.
     let remainingHours: Double?
@@ -242,29 +260,43 @@ private struct PackSummaryBox: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
-                if let summary {
+                if let wiring = resistanceSummary {
+                    // The worst connection first, because that is the one worth doing
+                    // something about — the opposite way round from the voltages,
+                    // where the row that matters is the cell that is lagging.
+                    let spread = wiring.highest > wiring.lowest
+                    extremeRow(symbol: "bolt.horizontal.fill",
+                               rotates: false,
+                               cell: wiring.highestIndex,
+                               text: wiring.highest.formatted(decimals: 3, unit: "Ω"),
+                               tint: .red,
+                               spread: spread)
+                    extremeRow(symbol: "bolt.horizontal",
+                               rotates: false,
+                               cell: wiring.lowestIndex,
+                               text: wiring.lowest.formatted(decimals: 3, unit: "Ω"),
+                               tint: .green,
+                               spread: spread)
+                    deltaRow(text: wiring.deltaMillivolts.formatted(decimals: 0, unit: "mΩ"))
+                } else if let summary {
                     // A pack whose cells all read the same has no weakest and no
                     // strongest, so neither row claims one: the figure would be an
                     // arbitrary cell out of however many are tied, and printing it
                     // beside a battery icon says it is the low one when it is not.
                     let spread = summary.highest > summary.lowest
                     extremeRow(symbol: "battery.25",
+                               rotates: true,
                                cell: summary.lowestIndex,
-                               volts: summary.lowest,
+                               text: summary.lowest.formatted(decimals: 3, unit: "V"),
                                tint: .red,
                                spread: spread)
                     extremeRow(symbol: "battery.75",
+                               rotates: true,
                                cell: summary.highestIndex,
-                               volts: summary.highest,
+                               text: summary.highest.formatted(decimals: 3, unit: "V"),
                                tint: .green,
                                spread: spread)
-                    HStack(alignment: .top) {
-                        Text("△")
-                            .frame(width: 20, height: 20, alignment: .center)
-                        Spacer(minLength: 8)
-                        Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
-                        Spacer()
-                    }
+                    deltaRow(text: summary.deltaMillivolts.formatted(decimals: 0, unit: "mV"))
                 }
                 if info.isBalancing {
                     HStack(alignment: .top) {
@@ -315,28 +347,54 @@ private struct PackSummaryBox: View {
         }
     }
 
-    /// One end of the cell string — or the fact that the pack does not have ends
-    /// worth naming, which is what a flat pack looks like.
+    /// The two ends of the readout on screen, when the pack measures it and the two
+    /// ends differ.
+    ///
+    /// Built from the resistances with the same code the voltages use — the figures
+    /// go in, the highest, the lowest and the spread come out, and nothing in there
+    /// is about volts. Answers `nil` whenever the voltages are what is showing, which
+    /// is what the row below falls back on.
+    private var resistanceSummary: CellSummary? {
+        guard readout == .resistances else { return nil }
+        return CellSummary(voltages: resistances)
+    }
+
+    /// One end of the string — or the fact that the pack does not have ends worth
+    /// naming, which is what a flat pack looks like.
     ///
     /// The row keeps its shape either way so the box does not change height as the
     /// cells drift apart and back together; it is the dash, the greying and the word
     /// that carry the difference.
     @ViewBuilder
     private func extremeRow(symbol: String,
+                            rotates: Bool,
                             cell: Int,
-                            volts: Double,
+                            text: String,
                             tint: Color,
                             spread: Bool) -> some View {
         HStack(alignment: .top) {
             Image(systemName: symbol)
                 .frame(width: 20, height: 20, alignment: .center)
-                .rotationEffect(.degrees(-90))
+                // The battery symbols read as a level, which means standing them on
+                // end. The bolts already point the way they mean.
+                .rotationEffect(.degrees(rotates ? -90 : 0))
                 .foregroundStyle(spread ? Color.primary : Color.secondary)
             CircleLabel(text: spread ? "\(cell + 1)" : "–")
                 .opacity(spread ? 1 : 0.45)
-            Text(spread ? volts.formatted(decimals: 3, unit: "V") : "none")
+            Text(spread ? text : "none")
                 .monospacedDigit()
                 .foregroundStyle(spread ? tint : Color.secondary)
+            Spacer()
+        }
+    }
+
+    /// How far apart those two ends are, in thousandths of whichever unit they are in.
+    private func deltaRow(text: String) -> some View {
+        HStack(alignment: .top) {
+            Text("△")
+                .frame(width: 20, height: 20, alignment: .center)
+            Spacer(minLength: 8)
+            Text(text).monospacedDigit()
             Spacer()
         }
     }
@@ -430,23 +488,10 @@ private struct BatteryInfoBox: View {
                         Text("\(count)").monospacedDigit()
                     }
                 }
-                if let hardware = info.hardwareVersion, !hardware.isEmpty {
-                    HStack {
-                        Text("Hardware")
-                        Spacer()
-                        Text(hardware)
-                    }
-                }
-                if let serial = info.serialNumber, !serial.isEmpty {
-                    HStack {
-                        Text("Serial number")
-                        Spacer()
-                        Text(serial)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                // The model, the hardware revision and the serial number used to be
+                // here too. They are the one part of this box that never changes while
+                // the app is open, and a figure that never changes does not belong on
+                // the screen you watch — they live in the device's own settings now.
                 if !info.protections.isEmpty {
                     Divider()
                     ForEach(info.protections.sorted { $0.rawValue < $1.rawValue }) { protection in

@@ -43,10 +43,14 @@ struct CellVoltageBox: View {
     /// bars are scaled between.
     @Binding var settings: DeviceSettings
 
+    /// Which of the two readouts is showing. Held by the overview rather than here,
+    /// because the box above follows it too: asking for the resistances swaps the two
+    /// ends of the string it names for the two ends of the wiring.
+    ///
     /// Not stored with the rest of the settings on purpose: the voltages are what
     /// anybody opens this screen for, and the resistances are something you go and
     /// look at, not something you want to find still showing next time.
-    @State private var readout: CellReadout = .voltages
+    @Binding var readout: CellReadout
 
     /// One populated cell, already turned into everything the layouts need to draw
     /// it. Both readouts produce these, which is what lets one set of layouts serve
