@@ -592,7 +592,8 @@ struct JKAdapterTests {
         }) {
             events += adapter.ingest(chunk)
         }
-        #expect(events.count == 2)
+        // The reading, the voltages and the resistances, as for any other frame.
+        #expect(events.count == 3)
         guard case .basicInfo(let info) = events.first?.kind else {
             Issue.record("Expected a reading even without a settled layout")
             return
@@ -610,7 +611,9 @@ struct JKAdapterTests {
             events += adapter.ingest(chunk)
         }
 
-        #expect(events.count == 2)
+        // One frame carries all three: what the pack is doing, the voltage at each
+        // cell and the resistance of the wire that reaches it.
+        #expect(events.count == 3)
         guard case .basicInfo(let info) = events.first?.kind else {
             Issue.record("Expected a reading first")
             return
@@ -618,10 +621,16 @@ struct JKAdapterTests {
         #expect(info.stateOfCharge == 84)
         #expect(info.cellCount == 16)
 
-        guard case .cellVoltages(let voltages) = events.last?.kind else {
+        guard case .cellVoltages(let voltages) = events.dropFirst().first?.kind else {
             Issue.record("Expected cell voltages second")
             return
         }
         #expect(voltages.filter { $0 > 0 }.count == 16)
+
+        guard case .cellResistances(let resistances) = events.last?.kind else {
+            Issue.record("Expected cell resistances third")
+            return
+        }
+        #expect(resistances.filter { $0 > 0 }.count == 16)
     }
 }
