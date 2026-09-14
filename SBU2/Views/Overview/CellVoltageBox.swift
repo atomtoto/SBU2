@@ -367,8 +367,25 @@ private struct GlassReadout: View {
             .background { surface }
     }
 
-    @ViewBuilder
+    /// Glass over a plate of the interface's own background.
+    ///
+    /// Glass on its own takes its brightness from whatever it is floating over, and
+    /// what it floats over here is the accent fill — an orange that is at its
+    /// brightest in dark mode, which is also where the figure on top of it is light.
+    /// The two met in the middle and the number all but disappeared. The plate settles
+    /// the polarity before the glass goes on: a light capsule in a light interface, a
+    /// dark one in a dark interface, whatever the bar underneath is doing, so a light
+    /// figure always has something dark behind it and a dark figure something light.
+    /// The glass still does the lifting; it just no longer decides the contrast.
     private var surface: some View {
+        Capsule()
+            .fill(.background)
+            .opacity(0.55)
+            .overlay { glass }
+    }
+
+    @ViewBuilder
+    private var glass: some View {
         if #available(iOS 26.0, *) {
             Color.clear.glassEffect(.regular, in: Capsule())
         } else {
