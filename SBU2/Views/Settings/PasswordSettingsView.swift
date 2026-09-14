@@ -84,11 +84,11 @@ struct PasswordSettingsView: View {
     }
 
     private var currentValid: Bool {
-        !connection.settings.hasPassword || JBD.isValidPassword(connection.settings.password)
+        !connection.settings.hasPassword || connection.isValidPassword(connection.settings.password)
     }
 
     private var canSubmit: Bool {
-        JBD.isValidPassword(newPassword) && currentValid
+        connection.isValidPassword(newPassword) && currentValid
     }
 
     /// Pads or trims a half-typed password so a stale value never gets replayed.
