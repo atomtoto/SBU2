@@ -40,6 +40,11 @@ enum JBD {
     enum Register: UInt8 {
         case basicInfo = 0x03
         case cellVoltages = 0x04
+        /// The pack's model string, in ASCII. An ordinary read like the two above —
+        /// no factory mode, no password. The name the manufacturer's own tooling
+        /// gives this register is "hardware version", but what comes back is the
+        /// model as it is printed on the label, so that is what it is called here.
+        case deviceModel = 0x05
         /// Enables factory ("read/write") mode. Needed before writing anything.
         case factoryModeOpen = 0x00
         /// Leaves factory mode and commits the changes.
@@ -214,6 +219,18 @@ enum JBD {
     }
 
     // MARK: - Responses
+
+    /// The model string out of a `deviceModel` answer.
+    ///
+    /// Some firmwares pad the field with zeros and some stop at the first one, so the
+    /// string ends wherever the text does. An answer that is empty, or that is not
+    /// text at all, comes back as `nil` rather than as an empty row on the screen.
+    static func deviceModel(payload: [UInt8]) -> String? {
+        let text = payload.prefix { $0 != 0 }
+        guard !text.isEmpty, let model = String(bytes: text, encoding: .ascii) else { return nil }
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     struct Response: Equatable {
         var register: UInt8

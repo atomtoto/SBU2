@@ -40,6 +40,18 @@ final class JBDAdapter: BMSProtocolAdapter {
         make: { JBDAdapter() })
 
     private var assembler = FrameAssembler(layout: JBD.frameLayout)
+    /// What the pack calls itself, once it has said. Asked for rather than streamed,
+    /// and asked for only a few times — see `modelAttempts`.
+    private var model: String?
+    private var modelAsks = 0
+
+    /// How many times a pack is asked for its model before the question is dropped.
+    ///
+    /// A JBD pack answers this register in normal mode, so asking costs nothing but
+    /// one round trip — but a firmware that does not implement it answers nothing at
+    /// all, and asking such a pack on every poll for the rest of the session would
+    /// hold up each round waiting for a reply that is never coming.
+    private static let modelAttempts = 3
 
     var supportsMOSControl: Bool { true }
     var supportsPasswordManagement: Bool { true }
@@ -49,8 +61,15 @@ final class JBDAdapter: BMSProtocolAdapter {
     // MARK: - Commands
 
     func pollCommands() -> [BMSCommand] {
-        [command(JBD.readRequest(.basicInfo), .basicInfo, isPoll: true),
-         command(JBD.readRequest(.cellVoltages), .cellVoltages, isPoll: true)]
+        var commands = [command(JBD.readRequest(.basicInfo), .basicInfo, isPoll: true),
+                        command(JBD.readRequest(.cellVoltages), .cellVoltages, isPoll: true)]
+        // Last in the round, and only until the pack has answered: the readings are
+        // what the screen is waiting for, and this is a label.
+        if model == nil, modelAsks < Self.modelAttempts {
+            modelAsks += 1
+            commands.append(command(JBD.readRequest(.deviceModel), .deviceModel, isPoll: true))
+        }
+        return commands
     }
 
     /// Unlock the pack if it is protected, open factory mode, write, close it again.
@@ -176,6 +195,13 @@ final class JBDAdapter: BMSProtocolAdapter {
 
         guard response.isOK else {
             switch register {
+            case JBD.Register.deviceModel.rawValue:
+                // A firmware that keeps no model refuses the read, and that is an
+                // answer rather than a fault: the question is dropped and nothing is
+                // said about it. Reporting it as a refusal would put "the BMS rejected
+                // the command" on screen over a question the user never asked.
+                modelAsks = Self.modelAttempts
+                return BMSEvent(register: register, kind: .accepted)
             case JBD.Register.enterPassword.rawValue,
                  JBD.Register.setPassword.rawValue,
                  JBD.Register.clearPassword.rawValue:
@@ -187,8 +213,16 @@ final class JBDAdapter: BMSProtocolAdapter {
 
         switch register {
         case JBD.Register.basicInfo.rawValue:
-            guard let info = BasicInfo.decode(payload: response.payload) else { return nil }
+            guard var info = BasicInfo.decode(payload: response.payload) else { return nil }
+            // The model lives in its own register, so it is carried across rather than
+            // left blank on every reading.
+            info.model = model
             return BMSEvent(register: register, kind: .basicInfo(info))
+        case JBD.Register.deviceModel.rawValue:
+            model = JBD.deviceModel(payload: response.payload)
+            // Nothing to show on its own — the next reading carries it — but the
+            // transport still needs to hear that the request was answered.
+            return BMSEvent(register: register, kind: .accepted)
         case JBD.Register.cellVoltages.rawValue:
             return BMSEvent(register: register,
                             kind: .cellVoltages(CellVoltages.decode(payload: response.payload)))

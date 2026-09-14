@@ -80,10 +80,15 @@ struct DemoDevice {
         switch family {
         case .jbd:
             reading.softwareVersion = "3.2"
+            // A JBD pack answers with its model and nothing else about itself; the
+            // serial number is in its EEPROM, behind factory mode, so the app does not
+            // go and get it.
+            reading.model = "JBD-SP04S020-L4S-100A-B-U"
             cellResistances = []
         case .jk:
             reading.softwareVersion = "11.26"
             reading.hardwareVersion = "11.0"
+            reading.model = "JK-BD6A17S6P"
             reading.serialNumber = "SBU2DEMO0001"
             reading.powerOnCount = 37
             reading.stateOfHealth = 98

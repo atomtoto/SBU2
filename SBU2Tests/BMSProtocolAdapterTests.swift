@@ -23,20 +23,89 @@ private let cellVoltageFrame: [UInt8] = [
     0xFB, 0xED, 0x77,
 ]
 
+/// What a pack answers the model register with: the name off its label, in ASCII.
+/// Built rather than written out so the checksum cannot drift away from the payload.
+private let deviceModelFrame: [UInt8] = {
+    let ascii = Array("JBD-SP04S034-L4S-200A".utf8)
+    let sum = JBD.checksum(headerByte: 0x00, payload: ascii)
+    return [0xDD, 0x05, 0x00, UInt8(ascii.count)]
+        + ascii
+        + [UInt8(sum >> 8), UInt8(sum & 0xFF), 0x77]
+}()
+
 @Suite("JBD adapter")
 struct JBDAdapterTests {
 
     @Test("A poll asks for the readings one command at a time, each expecting its own answer")
     func pollCommands() {
         let commands = JBDAdapter().pollCommands()
-        #expect(commands.count == 2)
+        // The two readings, and the model question that rides along until it is
+        // answered — last, because the readings are what the screen is waiting for.
+        #expect(commands.count == 3)
         // `map` and not `allSatisfy`: the macro lifts its sub-expressions into
         // closures, and a rethrowing call inside one is treated as throwing.
-        #expect(commands.map(\.isPoll) == [true, true])
+        #expect(commands.map(\.isPoll) == [true, true, true])
         #expect(commands[0].bytes == JBD.readRequest(.basicInfo))
         #expect(commands[0].expectedRegister == JBD.Register.basicInfo.rawValue)
         #expect(commands[1].bytes == JBD.readRequest(.cellVoltages))
         #expect(commands[1].expectedRegister == JBD.Register.cellVoltages.rawValue)
+        #expect(commands[2].bytes == JBD.readRequest(.deviceModel))
+        #expect(commands[2].expectedRegister == JBD.Register.deviceModel.rawValue)
+    }
+
+    @Test("A pack that says what it is is not asked again, and one that will not is let be")
+    func asksForTheModelOnce() {
+        let answering = JBDAdapter()
+        _ = answering.pollCommands()
+        _ = answering.ingest(Data(deviceModelFrame))
+        #expect(answering.pollCommands().count == 2)
+
+        // A firmware that does not implement the register answers nothing at all, so
+        // the question is dropped after a few rounds rather than held open for ever.
+        let silent = JBDAdapter()
+        for _ in 0..<JBDAdapterTests.modelAttempts {
+            #expect(silent.pollCommands().count == 3)
+        }
+        #expect(silent.pollCommands().count == 2)
+    }
+
+    /// Mirrors the adapter's own limit. Kept here rather than exposed on the adapter,
+    /// which has no reason to publish it.
+    private static let modelAttempts = 3
+
+    @Test("A pack that refuses to name itself is not an error worth showing")
+    func refusedModelIsNotAnError() {
+        let adapter = JBDAdapter()
+        _ = adapter.pollCommands()
+        // Status 0x80: the firmware does not implement the register.
+        let events = adapter.ingest(Data([0xDD, 0x05, 0x80, 0x00, 0x00, 0x00, 0x77]))
+        // Not `.rejected`, which would put "the BMS rejected the command" on screen
+        // over a question the user never asked.
+        #expect(events.first?.kind == .accepted)
+        // And the question is dropped there and then rather than asked twice more.
+        #expect(adapter.pollCommands().count == 2)
+    }
+
+    @Test("The model is carried into the reading, where the rest of the identity lives")
+    func modelJoinsTheReading() {
+        let adapter = JBDAdapter()
+        // Before the pack has answered, the reading simply has no model.
+        guard case .basicInfo(let before)? = adapter.ingest(Data(basicInfoFrame)).first?.kind else {
+            Issue.record("expected a basic-information event")
+            return
+        }
+        #expect(before.model == nil)
+
+        let answer = adapter.ingest(Data(deviceModelFrame))
+        // It shows nothing by itself — the transport only needs to hear it landed.
+        #expect(answer.first?.kind == .accepted)
+        #expect(answer.first?.register == JBD.Register.deviceModel.rawValue)
+
+        guard case .basicInfo(let after)? = adapter.ingest(Data(basicInfoFrame)).first?.kind else {
+            Issue.record("expected a basic-information event")
+            return
+        }
+        #expect(after.model == "JBD-SP04S034-L4S-200A")
     }
 
     @Test("An unprotected pack gets the bracket without a password replay")

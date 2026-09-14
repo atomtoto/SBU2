@@ -172,6 +172,28 @@ struct ResponseTests {
         #expect(!response.isOK)
         #expect(response.status == 0x81)
     }
+
+    @Test("The model comes back as the text the pack sent, and nothing else")
+    func deviceModel() {
+        let name = Array("JBD-SP04S034-L4S-200A-B-U".utf8)
+        #expect(JBD.deviceModel(payload: name) == "JBD-SP04S034-L4S-200A-B-U")
+
+        // Some firmwares pad the field out with zeros; the string ends where the text
+        // does, not where the field does.
+        #expect(JBD.deviceModel(payload: name + [0x00, 0x00, 0x00]) == "JBD-SP04S034-L4S-200A-B-U")
+
+        // Nothing worth showing is nothing at all, rather than an empty row.
+        #expect(JBD.deviceModel(payload: []) == nil)
+        #expect(JBD.deviceModel(payload: [0x00, 0x00]) == nil)
+        #expect(JBD.deviceModel(payload: Array("   ".utf8)) == nil)
+    }
+
+    @Test("Asking for the model is an ordinary read, not a factory-mode one")
+    func deviceModelRequest() {
+        // The whole point of this register: no bracket, no password, nothing to close
+        // afterwards — the same shape of request as the readings.
+        #expect(JBD.readRequest(.deviceModel) == [0xDD, 0xA5, 0x05, 0x00, 0xFF, 0xFB, 0x77])
+    }
 }
 
 @Suite("BLE notification reassembly")

@@ -19,10 +19,13 @@ struct DemoDeviceTests {
         // No JBD dongle measures the wire resistances, so the readout that shows them
         // must have nothing to offer here.
         #expect(demo.cellResistances.isEmpty)
+        // It does say what model it is — one ordinary register, no factory mode — but
+        // its serial number is in EEPROM behind that bracket, so it stays unread.
+        #expect(demo.info.model != nil)
+        #expect(demo.info.serialNumber == nil)
         // Nor does it keep a record of itself beyond its firmware version.
         #expect(demo.info.stateOfHealth == nil)
         #expect(demo.info.totalRuntime == nil)
-        #expect(demo.info.serialNumber == nil)
         // Two probes, numbered, because the family has no names for them.
         #expect(demo.info.temperatures.count == 2)
         #expect(demo.info.temperatureLabels.isEmpty)
@@ -37,6 +40,7 @@ struct DemoDeviceTests {
         #expect(demo.cellResistances.count == demo.cellVoltages.count)
         #expect((demo.cellResistances.min() ?? 0) > 0)
 
+        #expect(demo.info.model != nil)
         #expect(demo.info.stateOfHealth != nil)
         #expect(demo.info.totalRuntime != nil)
         #expect(demo.info.serialNumber != nil)

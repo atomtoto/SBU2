@@ -101,6 +101,9 @@ struct BasicInfo: Equatable {
     var powerOnCount: Int?
     var serialNumber: String?
     var hardwareVersion: String?
+    /// What the pack calls itself: the model as it is printed on the label. Both
+    /// families report one, which is why it is here rather than in either of them.
+    var model: String?
     /// What each temperature reading is, in the order `temperatures` gives them. A
     /// family that only has numbered probes leaves this empty and they are numbered.
     var temperatureLabels: [String] = []

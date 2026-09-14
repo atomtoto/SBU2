@@ -52,6 +52,13 @@ struct DeviceSettingsView: View {
                                        value: connection.settings.hasPassword ? "Set" : "None")
                     }
                 }
+                // What the pack says it is. Only the rows it actually answers — a
+                // family or a firmware that keeps one of these to itself shows no row
+                // rather than a dash. None of them ever change while the app is open,
+                // which is why they sit here rather than in the overview.
+                IdentityRow(title: "Model", value: connection.info.model)
+                IdentityRow(title: "Hardware Version", value: connection.info.hardwareVersion)
+                IdentityRow(title: "Serial Number", value: connection.info.serialNumber)
             } header: {
                 Text("Device")
             } footer: {
@@ -135,6 +142,26 @@ struct DeviceSettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .dismissableKeyboard()
+    }
+}
+
+/// One thing the pack says about itself, or nothing at all.
+///
+/// Long strings are the norm here — a JBD model name runs to twenty-five characters
+/// and a serial number further — so the value wraps rather than being cut off, and is
+/// selectable, because a serial number is something people copy.
+private struct IdentityRow: View {
+    let title: String
+    let value: String?
+
+    var body: some View {
+        if let value, !value.isEmpty {
+            LabeledContent(title) {
+                Text(value)
+                    .multilineTextAlignment(.trailing)
+                    .textSelection(.enabled)
+            }
+        }
     }
 }
 

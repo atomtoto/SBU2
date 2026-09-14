@@ -204,6 +204,9 @@ final class JKAdapter: BMSProtocolAdapter {
             info.hardwareVersion = identity?.hardwareVersion
             info.serialNumber = identity?.serialNumber
             info.powerOnCount = identity?.powerOnCount
+            // Blank rather than absent on a pack that leaves the field empty, and a
+            // blank row says less than no row at all.
+            info.model = identity.flatMap { $0.model.isEmpty ? nil : $0.model }
             return [BMSEvent(register: type.rawValue, kind: .basicInfo(info)),
                     BMSEvent(register: type.rawValue,
                              kind: .cellVoltages(JK.cellVoltages(frame, layout))),
