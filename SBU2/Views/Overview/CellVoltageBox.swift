@@ -42,6 +42,10 @@ struct CellVoltageBox: View {
     /// This pack's own settings: the style it is drawn in, and the two voltages the
     /// bars are scaled between.
     @Binding var settings: DeviceSettings
+    /// Whether the figures on the bars are given a solid plate to stand on. An
+    /// app-wide choice rather than a per-pack one — it is about how the screen is
+    /// read, not about the pack — and off unless it is asked for.
+    var highContrastFigures = false
 
     /// Which of the two readouts is showing. Held by the overview rather than here,
     /// because the box above follows it too: asking for the resistances swaps the two
@@ -51,6 +55,8 @@ struct CellVoltageBox: View {
     /// anybody opens this screen for, and the resistances are something you go and
     /// look at, not something you want to find still showing next time.
     @Binding var readout: CellReadout
+
+    @Environment(\.colorScheme) private var colorScheme
 
     /// One populated cell, already turned into everything the layouts need to draw
     /// it. Both readouts produce these, which is what lets one set of layouts serve
@@ -240,17 +246,37 @@ struct CellVoltageBox: View {
             Text("\(entry.index + 1)")
                 .font(.system(size: compact ? 11 : 13, weight: .heavy))
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             if balancing.contains(entry.index) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: compact ? 9 : 11))
                     .transition(.scale.combined(with: .opacity))
             }
         }
+        .shadow(color: indexHalo, radius: 1.5)
+        .shadow(color: indexHalo, radius: 0.5)
+    }
+
+    /// A halo in the opposite polarity to the number, carried with it.
+    ///
+    /// The number is the one thing on these bars with nothing behind it, and there is
+    /// no single colour that works where it lands: the fill is a light orange that
+    /// wants dark text, while the empty end of the bar in a dark interface wants light
+    /// text — and which of the two a given cell's number sits on depends on how full
+    /// that cell is. It was drawn in the secondary colour, which in the dark is a
+    /// washed-out grey on either. Now it takes the interface's own colour at full
+    /// strength and brings its own contrast with it: two soft shadows, dark under a
+    /// light figure and light under a dark one, tight enough to read as an edge rather
+    /// than as a glow.
+    private var indexHalo: Color {
+        colorScheme == .dark ? .black.opacity(0.6) : .white.opacity(0.7)
     }
 
     private func glassReadout(_ entry: Entry, compact: Bool) -> some View {
-        GlassReadout(text: entry.text, tint: entry.tint, compact: compact)
+        GlassReadout(text: entry.text,
+                     tint: entry.tint,
+                     compact: compact,
+                     plated: highContrastFigures)
     }
 
     /// Which side the figures sit on.
@@ -358,6 +384,9 @@ private struct GlassReadout: View {
     let text: String
     let tint: Color
     var compact: Bool = false
+    /// Whether to settle the contrast before the glass goes on. Off unless the user
+    /// has asked for it in the app's settings.
+    var plated: Bool = false
 
     var body: some View {
         Text(text)
@@ -371,21 +400,25 @@ private struct GlassReadout: View {
             .background { surface }
     }
 
-    /// Glass over a plate of the interface's own background.
+    /// Glass, optionally over a plate of the interface's own background.
     ///
     /// Glass on its own takes its brightness from whatever it is floating over, and
     /// what it floats over here is the accent fill — an orange that is at its
     /// brightest in dark mode, which is also where the figure on top of it is light.
-    /// The two met in the middle and the number all but disappeared. The plate settles
-    /// the polarity before the glass goes on: a light capsule in a light interface, a
-    /// dark one in a dark interface, whatever the bar underneath is doing, so a light
-    /// figure always has something dark behind it and a dark figure something light.
-    /// The glass still does the lifting; it just no longer decides the contrast.
+    /// The plate settles the polarity before the glass goes on: a light capsule in a
+    /// light interface, a dark one in a dark interface, whatever the bar underneath is
+    /// doing. It is a real trade, though — the glass is most of what these styles are
+    /// for — so it is offered rather than imposed, and the default is the glass alone.
+    @ViewBuilder
     private var surface: some View {
-        Capsule()
-            .fill(.background)
-            .opacity(0.55)
-            .overlay { glass }
+        if plated {
+            Capsule()
+                .fill(.background)
+                .opacity(0.55)
+                .overlay { glass }
+        } else {
+            glass
+        }
     }
 
     @ViewBuilder

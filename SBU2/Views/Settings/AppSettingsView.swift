@@ -50,13 +50,18 @@ struct AppSettingsView: View {
                 Text("Shows a warning before every charge or discharge command. Turning this off applies the command as soon as you tap the button.")
             }
 
-            Section("Theme") {
+            Section {
                 Picker("Select Theme", selection: $settings.appearance) {
                     ForEach(Appearance.allCases) { appearance in
                         Text(appearance.label).tag(appearance)
                     }
                 }
                 .pickerStyle(.segmented)
+                Toggle("High-contrast cell figures", isOn: $settings.highContrastFigures)
+            } header: {
+                Text("Theme")
+            } footer: {
+                Text("The Aesthetic cell styles float their figures on the bars as Liquid Glass, which takes its brightness from the bar underneath. High contrast puts a solid plate behind them instead, so they read the same whatever colour the bar is — at the cost of some of the glass.")
             }
 
             Section("App") {

@@ -52,6 +52,12 @@ final class AppSettings {
     /// Whether tapping a MOSFET button asks for confirmation first. Off once the
     /// user dismisses the warning with "Don't warn me again".
     var showMOSFETWarning = true
+    /// Whether the figures floating on the cell bars get a solid plate behind them.
+    ///
+    /// Off by default: those figures are glass, and glass is what they are meant to
+    /// look like. The plate guarantees their contrast against a bar of any colour, at
+    /// the cost of some of that.
+    var highContrastFigures = false
 
     struct Snapshot: Codable, Equatable {
         var showDemoDevice = true
@@ -59,6 +65,14 @@ final class AppSettings {
         var keepScreenAwake = false
         var appearance: Appearance = .system
         var showMOSFETWarning = true
+        /// Optional, and read through the property above rather than directly.
+        ///
+        /// The synthesized decoder throws on a key that is not in the stored JSON even
+        /// when the property has a default, and the initialiser below answers a throw
+        /// by keeping the factory settings — so a plain new field would cost everyone
+        /// their theme, their units and their demo-device choice the first time they
+        /// opened this version. An optional decodes as `nil` instead.
+        var highContrastFigures: Bool?
     }
 
     /// Equatable view of the settings, so a single `onChange` can drive persistence.
@@ -67,7 +81,8 @@ final class AppSettings {
                  capacityUnit: capacityUnit,
                  keepScreenAwake: keepScreenAwake,
                  appearance: appearance,
-                 showMOSFETWarning: showMOSFETWarning)
+                 showMOSFETWarning: showMOSFETWarning,
+                 highContrastFigures: highContrastFigures)
     }
 
     init() {
@@ -78,6 +93,7 @@ final class AppSettings {
         keepScreenAwake = stored.keepScreenAwake
         appearance = stored.appearance
         showMOSFETWarning = stored.showMOSFETWarning
+        highContrastFigures = stored.highContrastFigures ?? false
     }
 
     func persist() {

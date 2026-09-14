@@ -55,6 +55,7 @@ struct OverviewView: View {
                                    balancing: connection.info.balancingCells,
                                    summary: connection.cellSummary,
                                    settings: $connection.settings,
+                                   highContrastFigures: appSettings.highContrastFigures,
                                    readout: $readout)
                 }
                 BatteryInfoBox(info: connection.info,

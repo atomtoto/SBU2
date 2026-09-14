@@ -100,3 +100,42 @@ struct DeviceSettingsTests {
         #expect(decoded.refillTarget == .full)
     }
 }
+
+@Suite("Stored app settings")
+struct AppSettingsTests {
+
+    /// Exactly what `UserDefaults` held before the high-contrast choice existed: every
+    /// key that was current then, and none that were not.
+    private let storedBeforeHighContrast = """
+    {"showDemoDevice":false,"capacityUnit":"wattHours","keepScreenAwake":true,
+     "appearance":"dark","showMOSFETWarning":false}
+    """
+
+    @Test("Settings stored before the newest one keep everything else")
+    func decodesWithoutNewerKeys() throws {
+        // The whole point of the optional: the synthesized decoder throws on a missing
+        // key even where the property has a default, and a throw here is answered by
+        // keeping the factory settings — which would cost everyone their theme and
+        // their units the first time they opened this version.
+        let stored = try JSONDecoder().decode(AppSettings.Snapshot.self,
+                                              from: Data(storedBeforeHighContrast.utf8))
+        #expect(stored.showDemoDevice == false)
+        #expect(stored.capacityUnit == .wattHours)
+        #expect(stored.keepScreenAwake)
+        #expect(stored.appearance == .dark)
+        #expect(stored.showMOSFETWarning == false)
+        // Absent, which the app reads as off.
+        #expect(stored.highContrastFigures == nil)
+    }
+
+    @Test("The glass is what the figures wear unless someone says otherwise")
+    func highContrastIsOptIn() throws {
+        #expect(AppSettings.Snapshot().highContrastFigures == nil)
+
+        var asked = AppSettings.Snapshot()
+        asked.highContrastFigures = true
+        let decoded = try JSONDecoder().decode(AppSettings.Snapshot.self,
+                                               from: JSONEncoder().encode(asked))
+        #expect(decoded.highContrastFigures == true)
+    }
+}
