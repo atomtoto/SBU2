@@ -24,9 +24,10 @@ enum CellReadout: String, CaseIterable, Identifiable {
 /// Every populated cell, with the two ends of the string picked out.
 ///
 /// Long-press to change the layout. A pack of four cells and a pack of twenty-four
-/// want very different things here, which is why the choice starts out automatic:
-/// past twenty cells a bar each stops being something anyone can read, and the
-/// figures on their own say more.
+/// want very different things here, which is why the first reading picks the layout
+/// from the string's length: past twenty cells a bar each stops being something
+/// anyone can read, and the figures on their own say more. After that the choice
+/// is the user's, from here or from the device's settings.
 ///
 /// A pack that measures its own wiring gets a second readout, and a picker under the
 /// figures to swap between them. That readout says something quite different from the
@@ -74,7 +75,7 @@ struct CellVoltageBox: View {
     var body: some View {
         Card {
             VStack(spacing: 0) {
-                layout
+                styledLayout
                 if offersResistances {
                     Picker("Readout", selection: $readout) {
                         ForEach(CellReadout.allCases) { Text($0.label).tag($0) }
@@ -88,26 +89,34 @@ struct CellVoltageBox: View {
         .animation(.easeInOut(duration: 0.4), value: summary?.lowestIndex)
         .animation(.easeInOut(duration: 0.4), value: summary?.highestIndex)
         .animation(.easeInOut(duration: 0.25), value: readout)
+        .animation(.spring(duration: 0.45), value: settings.cellVoltageStyle)
         .contextMenu {
-            Picker("Cell voltage style", selection: $settings.storedCellVoltageStyle) {
-                Label("Automatic", systemImage: "wand.and.rays")
-                    .tag(CellVoltageStyle?.none)
+            Picker("Cell voltage style", selection: $settings.cellVoltageStyle) {
                 ForEach(CellVoltageStyle.allCases) { style in
-                    Label(style.label, systemImage: style.symbol)
-                        .tag(CellVoltageStyle?.some(style))
+                    Label(style.label, systemImage: style.symbol).tag(style)
                 }
             }
         }
     }
 
+    /// The layouts swap rather than morph — they share no shape to interpolate —
+    /// so the swap is given a fade-and-settle to travel on instead of a jump cut.
+    /// Keying the identity to the style makes the outgoing layout leave as the new
+    /// one arrives rather than one replacing the other mid-frame.
     @ViewBuilder
     private var layout: some View {
-        switch settings.cellVoltageStyle(cellCount: entries.count) {
+        switch settings.cellVoltageStyle {
         case .bars: barsLayout
         case .compact: compactLayout
         case .compactAesthetic: compactAestheticLayout
         case .aesthetic: aestheticLayout
         }
+    }
+
+    private var styledLayout: some View {
+        layout
+            .id(settings.cellVoltageStyle)
+            .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
 
     // MARK: - A bar per cell

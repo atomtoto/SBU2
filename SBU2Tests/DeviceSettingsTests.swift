@@ -59,18 +59,27 @@ struct DeviceSettingsTests {
         }
     }
 
-    @Test("A long string of cells opens on the figures, a short one on the bars")
-    func automaticCellVoltageStyle() {
-        var settings = DeviceSettings()
-        // Nothing chosen: the pack's own length decides, on either side of twenty.
-        #expect(settings.cellVoltageStyle(cellCount: 4) == .bars)
-        #expect(settings.cellVoltageStyle(cellCount: 20) == .bars)
-        #expect(settings.cellVoltageStyle(cellCount: 21) == .compact)
+    @Test("The first reading fixes the style for good, from the pack's own length")
+    func automaticCellVoltageStyleResolvesOnce() {
+        var shortPack = DeviceSettings()
+        // Nothing chosen yet: the first reading sets the style from the cell count,
+        // on either side of twenty.
+        shortPack.resolveAutomaticStyles(cellCount: 4)
+        #expect(shortPack.cellVoltageStyle == .bars)
 
-        // Chosen: the choice holds however many cells there are.
-        settings.storedCellVoltageStyle = .aesthetic
-        #expect(settings.cellVoltageStyle(cellCount: 4) == .aesthetic)
-        #expect(settings.cellVoltageStyle(cellCount: 24) == .aesthetic)
+        var longPack = DeviceSettings()
+        longPack.resolveAutomaticStyles(cellCount: 24)
+        #expect(longPack.cellVoltageStyle == .compact)
+
+        // Resolved is resolved: a later reading does not revisit it.
+        longPack.resolveAutomaticStyles(cellCount: 4)
+        #expect(longPack.cellVoltageStyle == .compact)
+
+        // Chosen before any reading: the choice holds rather than being overwritten.
+        var chosen = DeviceSettings()
+        chosen.cellVoltageStyle = .aesthetic
+        chosen.resolveAutomaticStyles(cellCount: 24)
+        #expect(chosen.cellVoltageStyle == .aesthetic)
     }
 
     @Test("Styles are per device, so one pack's choice is not another's")

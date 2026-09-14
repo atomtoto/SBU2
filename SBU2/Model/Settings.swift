@@ -171,8 +171,11 @@ enum CellVoltageStyle: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// What a pack gets when nobody has chosen: bars until there are too many cells
-    /// for a bar each to be worth reading.
+    /// What a pack gets the first time it is seen, before anyone has chosen: bars
+    /// until there are too many cells for a bar each to be worth reading. Applied
+    /// once, at the first reading, and stored like any other choice from then on —
+    /// there is no standing "automatic" mode for it to drift away from the pack
+    /// under.
     static func automatic(cellCount: Int) -> CellVoltageStyle {
         cellCount > 20 ? .compact : .bars
     }
@@ -340,9 +343,10 @@ struct DeviceSettings: Codable, Equatable {
     /// Optional for the decode reason given above.
     var storedIcon: DeviceIcon?
 
-    /// How this pack's two customisable overview boxes are drawn. Optional for the
-    /// same decode reason, and because `nil` genuinely means something for the
-    /// second one: it is the "Automatic" row, which resolves against the cell count.
+    /// How this pack's two customisable overview boxes are drawn. Optional on the
+    /// cell side only so the decoders of versions before the choice existed do not
+    /// throw — `nil` is resolved to a real style at the first reading, which is the
+    /// first moment the cell count it turns on is known.
     var storedOverviewStyle: OverviewStyle?
     var storedCellVoltageStyle: CellVoltageStyle?
 
@@ -351,10 +355,22 @@ struct DeviceSettings: Codable, Equatable {
         set { storedOverviewStyle = newValue }
     }
 
-    /// The style a string of this many cells should be drawn in, honouring the choice
-    /// if one was made and falling back to what suits the length of the string.
-    func cellVoltageStyle(cellCount: Int) -> CellVoltageStyle {
-        storedCellVoltageStyle ?? .automatic(cellCount: cellCount)
+    /// The style the cells are drawn in. Once it has been resolved it is a real
+    /// choice like any other; `nil` only ever survives between a first pairing and
+    /// the first reading that arrives under it.
+    var cellVoltageStyle: CellVoltageStyle {
+        get { storedCellVoltageStyle ?? .bars }
+        set { storedCellVoltageStyle = newValue }
+    }
+
+    /// Sets the cell style once, from the count this pack actually has. Called when
+    /// the first reading arrives on a device whose style has not been chosen yet —
+    /// either never asked, or stored before the app asked — and never again after:
+    /// from then on the style is the user's to change.
+    mutating func resolveAutomaticStyles(cellCount: Int) {
+        if storedCellVoltageStyle == nil {
+            storedCellVoltageStyle = .automatic(cellCount: cellCount)
+        }
     }
 
     /// What to draw for this device, chosen or not.

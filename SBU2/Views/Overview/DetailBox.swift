@@ -25,11 +25,19 @@ struct DetailBox: View {
 
     var body: some View {
         Card {
-            switch settings.overviewStyle {
-            case .ring: ringLayout
-            case .bars: barLayout
+            // The two layouts share no shape to interpolate, so the swap travels on a
+            // fade-and-settle rather than a jump cut — keyed to the style so each
+            // layout leaves as the other arrives.
+            Group {
+                switch settings.overviewStyle {
+                case .ring: ringLayout
+                case .bars: barLayout
+                }
             }
+            .id(settings.overviewStyle)
+            .transition(.opacity.combined(with: .scale(scale: 0.97)))
         }
+        .animation(.spring(duration: 0.4), value: settings.overviewStyle)
         .contextMenu {
             Picker("Info box style", selection: $settings.overviewStyle) {
                 ForEach(OverviewStyle.allCases) { style in

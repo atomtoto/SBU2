@@ -458,6 +458,11 @@ final class BMSConnection: NSObject {
     private func stepDemo() {
         demo?.step()
         info = demo?.info ?? BasicInfo()
+        if !hasReading, demo != nil {
+            // Same first-reading resolution as the live path.
+            settings.resolveAutomaticStyles(cellCount: info.cellCount)
+            saveSettings()
+        }
         hasReading = demo != nil
         cellVoltages = demo?.cellVoltages ?? []
         cellResistances = demo?.cellResistances ?? []
@@ -740,6 +745,13 @@ final class BMSConnection: NSObject {
         switch event.kind {
         case .basicInfo(let decoded):
             info = decoded
+            // The first frame is also the first moment the string's length is
+            // known, which is what the unchosen overview styles resolve from. They
+            // are written back like any other choice, so this runs once per pack.
+            if !hasReading {
+                settings.resolveAutomaticStyles(cellCount: decoded.cellCount)
+                saveSettings()
+            }
             hasReading = true
             lastUpdate = .now
             noteForEstimate(decoded)

@@ -216,18 +216,15 @@ struct OverviewSettingsView: View {
                         Label(style.label, systemImage: style.symbol).tag(style)
                     }
                 }
-                Picker("Cell voltages", selection: $settings.storedCellVoltageStyle) {
-                    Label("Automatic", systemImage: "wand.and.rays")
-                        .tag(CellVoltageStyle?.none)
+                Picker("Cell voltages", selection: $settings.cellVoltageStyle) {
                     ForEach(CellVoltageStyle.allCases) { style in
-                        Label(style.label, systemImage: style.symbol)
-                            .tag(CellVoltageStyle?.some(style))
+                        Label(style.label, systemImage: style.symbol).tag(style)
                     }
                 }
             } header: {
                 Text("Style")
             } footer: {
-                Text("Long-press either box in the overview to change it from there. Automatic draws the cells as bars, or as figures alone once there are more than twenty of them.")
+                Text("Long-press either box in the overview to change it from there. The cell style starts as bars, or as figures alone on a pack of more than twenty cells, the first time the pack is read.")
             }
 
             Section {
