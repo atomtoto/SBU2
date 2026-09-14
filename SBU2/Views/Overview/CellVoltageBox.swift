@@ -246,30 +246,24 @@ struct CellVoltageBox: View {
             Text("\(entry.index + 1)")
                 .font(.system(size: compact ? 11 : 13, weight: .heavy))
                 .monospacedDigit()
-                .foregroundStyle(.primary)
+                .foregroundStyle(indexColour)
             if balancing.contains(entry.index) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: compact ? 9 : 11))
                     .transition(.scale.combined(with: .opacity))
             }
         }
-        .shadow(color: indexHalo, radius: 1.5)
-        .shadow(color: indexHalo, radius: 0.5)
     }
 
-    /// A halo in the opposite polarity to the number, carried with it.
+    /// The cell number, taken a shade darker in a dark interface.
     ///
-    /// The number is the one thing on these bars with nothing behind it, and there is
-    /// no single colour that works where it lands: the fill is a light orange that
-    /// wants dark text, while the empty end of the bar in a dark interface wants light
-    /// text — and which of the two a given cell's number sits on depends on how full
-    /// that cell is. It was drawn in the secondary colour, which in the dark is a
-    /// washed-out grey on either. Now it takes the interface's own colour at full
-    /// strength and brings its own contrast with it: two soft shadows, dark under a
-    /// light figure and light under a dark one, tight enough to read as an edge rather
-    /// than as a glow.
-    private var indexHalo: Color {
-        colorScheme == .dark ? .black.opacity(0.6) : .white.opacity(0.7)
+    /// The bar it sits on is the accent fill, a light orange whichever way the
+    /// interface is set, so in the dark the number reads better going down than up —
+    /// where the secondary colour has it heading the other way, towards a pale grey on
+    /// a pale bar. Darkened rather than replaced: it is still the quiet half of the
+    /// row, and the voltage is still the part meant to be read first.
+    private var indexColour: Color {
+        colorScheme == .dark ? Color.black.opacity(0.6) : Color.secondary
     }
 
     private func glassReadout(_ entry: Entry, compact: Bool) -> some View {
