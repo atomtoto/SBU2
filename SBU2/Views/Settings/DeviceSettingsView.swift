@@ -141,7 +141,6 @@ struct DeviceSettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .dismissableKeyboard()
     }
 }
 

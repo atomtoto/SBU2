@@ -141,7 +141,6 @@ struct CalibrationSettingsView: View {
         }
         .navigationTitle("Calibration")
         .navigationBarTitleDisplayMode(.inline)
-        .dismissableKeyboard()
         .confirmationDialog(confirming.map(title(for:)) ?? "",
                             isPresented: Binding(get: { confirming != nil },
                                                  set: { if !$0 { confirming = nil } }),

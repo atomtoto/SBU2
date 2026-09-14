@@ -92,6 +92,11 @@ struct DeviceListView: View {
                 autoConnectIfNeeded()
             }
         }
+        // Once, for the whole app: a Done bar above every keyboard and a tap anywhere
+        // else to put it away. Declared here rather than on each form because a
+        // per-form version could not tell which of two screens in the same stack the
+        // keyboard belonged to.
+        .dismissableKeyboard()
     }
 
     // MARK: - Icons

@@ -80,7 +80,6 @@ struct PasswordSettingsView: View {
         }
         .navigationTitle("Password")
         .navigationBarTitleDisplayMode(.inline)
-        .dismissableKeyboard()
         .onDisappear { normalisePassword(&connection.settings) }
     }
 
