@@ -13,7 +13,7 @@ struct DeviceSettingsView: View {
         @Bindable var connection = connection
 
         Form {
-            if connection.openDeviceID == DemoDevice.identifier {
+            if connection.isDemoOpen {
                 Section {
                     Label("Demo device: values are simulated and no command is sent.",
                           systemImage: "wand.and.sparkles")
@@ -33,7 +33,17 @@ struct DeviceSettingsView: View {
                     }
                 }
                 Toggle("Auto connect", isOn: $connection.settings.autoConnect)
-                LabeledContent("Protocol", value: connection.protocolLabel)
+                // The simulated pack has no advertisement to be recognised by, so it
+                // is the one device whose family is chosen rather than detected.
+                if connection.isDemoOpen {
+                    Picker("Protocol", selection: $connection.demoFamily) {
+                        ForEach(BMSProtocolID.allCases) { id in
+                            Text(BMSProtocolRegistry.descriptor(for: id).label).tag(id)
+                        }
+                    }
+                } else {
+                    LabeledContent("Protocol", value: connection.protocolLabel)
+                }
                 if connection.supportsPasswordManagement {
                     NavigationLink {
                         PasswordSettingsView()
@@ -45,7 +55,9 @@ struct DeviceSettingsView: View {
             } header: {
                 Text("Device")
             } footer: {
-                Text("Changing the device type allows you to access additional menus.")
+                Text(connection.isDemoOpen
+                     ? "Changing the device type allows you to access additional menus. The protocol decides which family the simulated pack imitates: the two do not measure the same things and do not accept the same commands, so switching is how to see what each one offers without the hardware."
+                     : "Changing the device type allows you to access additional menus.")
             }
 
             // Out of the GPS section, which only vehicles see: the overview's power

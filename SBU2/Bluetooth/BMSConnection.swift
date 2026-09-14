@@ -208,16 +208,61 @@ final class BMSConnection: NSObject {
 
     private func refreshDemoEntry() {
         discovered.removeAll { $0.isDemo }
-        if showDemoDevice {
-            var entry = DiscoveredBMS(id: DemoDevice.identifier,
-                                      name: "Demo device",
-                                      rssi: nil,
-                                      isDemo: true,
-                                      peripheral: nil)
-            entry.name = DeviceSettingsStore.load(DemoDevice.identifier).name.isEmpty
-                ? entry.name
-                : DeviceSettingsStore.load(DemoDevice.identifier).name
-            discovered.insert(entry, at: 0)
+        guard showDemoDevice else { return }
+        let stored = DeviceSettingsStore.load(DemoDevice.identifier)
+        var entry = DiscoveredBMS(id: DemoDevice.identifier,
+                                  name: "Demo device",
+                                  rssi: nil,
+                                  isDemo: true,
+                                  peripheral: nil)
+        entry.name = stored.name.isEmpty ? entry.name : stored.name
+        // Nothing is advertising, so the family the demo pack speaks is the one it was
+        // last told to speak. `open` reads it from here like any other device's.
+        entry.protocolID = stored.protocolID ?? .jbd
+        discovered.insert(entry, at: 0)
+    }
+
+    // MARK: - The simulated pack
+
+    /// Whether the device on screen is the simulated one.
+    ///
+    /// Asked of `openDeviceID` rather than of the simulator itself, because the
+    /// simulator is not observed and a view reading it would never be told it had
+    /// changed.
+    var isDemoOpen: Bool { openDeviceID == DemoDevice.identifier }
+
+    /// Which family the simulated pack pretends to be.
+    ///
+    /// A real dongle is recognised from what it advertises; the demo pack advertises
+    /// nothing, so it is told instead. Telling it changes far more than the label in
+    /// its settings: the adapter built alongside it is what every capability in the
+    /// interface is asked of, so the calibration menu, the hardware password and the
+    /// alert reset appear and disappear with the choice — which is the whole reason
+    /// to offer it.
+    var demoFamily: BMSProtocolID {
+        get {
+            let stored = isDemoOpen ? settings : DeviceSettingsStore.load(DemoDevice.identifier)
+            return stored.protocolID ?? .jbd
+        }
+        set {
+            guard newValue != demoFamily else { return }
+            if isDemoOpen {
+                settings.protocolID = newValue
+                saveSettings()
+            } else {
+                var stored = DeviceSettingsStore.load(DemoDevice.identifier)
+                stored.protocolID = newValue
+                DeviceSettingsStore.save(stored, for: DemoDevice.identifier)
+            }
+            refreshDemoEntry()
+            guard demo != nil else { return }
+            stopPolling()
+            resetReadings()
+            protocolID = newValue
+            descriptor = BMSProtocolRegistry.descriptor(for: newValue)
+            adapter = descriptor.make()
+            demo = DemoDevice(family: newValue)
+            startPolling()
         }
     }
 
@@ -256,6 +301,9 @@ final class BMSConnection: NSObject {
         // the first open saves the family it chose, so a pack opened once as the
         // wrong one could never be opened as the right one again, however much the
         // matching improved. It is still recorded below, but only as a record.
+        //
+        // The simulated pack advertises nothing at all, so its entry carries whatever
+        // family it was last told to imitate — see `demoFamily`.
         protocolID = device.protocolID
         descriptor = BMSProtocolRegistry.descriptor(for: protocolID)
         adapter = descriptor.make()
@@ -263,7 +311,7 @@ final class BMSConnection: NSObject {
         saveSettings()
 
         if device.isDemo {
-            demo = DemoDevice()
+            demo = DemoDevice(family: protocolID)
             peripheral = nil
             wantsConnection = false
             status = .connected(displayName(for: device))
@@ -409,6 +457,7 @@ final class BMSConnection: NSObject {
         info = demo?.info ?? BasicInfo()
         hasReading = demo != nil
         cellVoltages = demo?.cellVoltages ?? []
+        cellResistances = demo?.cellResistances ?? []
         lastUpdate = .now
         noteForEstimate(info)
         // The demo pack never answers a command, so reconcile the tracker here too.
