@@ -42,7 +42,8 @@ struct OverviewView: View {
                     ChargeBox(settings: $connection.settings)
                 }
                 CellTemperatureBox(info: connection.info,
-                                   summary: connection.cellSummary,
+                                   cellSummary: connection.cellSummary,
+                                   temperatureSummary: connection.temperatureSummary,
                                    remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
@@ -204,7 +205,8 @@ private struct ButtonBox: View {
 
 private struct CellTemperatureBox: View {
     let info: BasicInfo
-    let summary: CellSummary?
+    let cellSummary: CellSummary?
+    let temperatureSummary: TemperatureSummary?
     /// From the connection rather than from `info`: the estimate leans on the
     /// readings that came before this one as much as on this one.
     let remainingHours: Double?
@@ -214,7 +216,7 @@ private struct CellTemperatureBox: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
                     HStack(alignment: .top) {
-                        Image(systemName: "thermometer")
+                        Image(systemName: temperatureSymbol(for: index))
                             .frame(width: 20, height: 20, alignment: .center)
                         // The pack's own name for the sensor rather than its position
                         // in the list: on a JK pack the third one is the MOSFETs, not
@@ -224,6 +226,7 @@ private struct CellTemperatureBox: View {
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
+                            .foregroundStyle(temperatureTint(for: index))
                         Spacer()
                     }
                 }
@@ -237,16 +240,16 @@ private struct CellTemperatureBox: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
-                if let summary {
+                if let cellSummary {
                     // Tinted like the per-cell list below: the weakest cell red, the
                     // strongest green, and neither while the pack reads flat.
-                    let spread = summary.highest > summary.lowest
+                    let spread = cellSummary.highest > cellSummary.lowest
                     HStack(alignment: .top) {
                         Image(systemName: "battery.25")
                             .frame(width: 20, height: 20, alignment: .center)
                             .rotationEffect(.degrees(-90))
-                        CircleNumber(number: summary.lowestIndex + 1)
-                        Text(summary.lowest.formatted(decimals: 3, unit: "V"))
+                        CircleNumber(number: cellSummary.lowestIndex + 1)
+                        Text(cellSummary.lowest.formatted(decimals: 3, unit: "V"))
                             .monospacedDigit()
                             .foregroundStyle(spread ? Color.red : Color.primary)
                         Spacer()
@@ -255,8 +258,8 @@ private struct CellTemperatureBox: View {
                         Image(systemName: "battery.75")
                             .frame(width: 20, height: 20, alignment: .center)
                             .rotationEffect(.degrees(-90))
-                        CircleNumber(number: summary.highestIndex + 1)
-                        Text(summary.highest.formatted(decimals: 3, unit: "V"))
+                        CircleNumber(number: cellSummary.highestIndex + 1)
+                        Text(cellSummary.highest.formatted(decimals: 3, unit: "V"))
                             .monospacedDigit()
                             .foregroundStyle(spread ? Color.green : Color.primary)
                         Spacer()
@@ -265,7 +268,36 @@ private struct CellTemperatureBox: View {
                         Text("△")
                             .frame(width: 20, height: 20, alignment: .center)
                         Spacer(minLength: 8)
-                        Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
+                        Text(cellSummary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
+                        Spacer()
+                    }
+                }
+                if let temperatureSummary {
+                    let spread = temperatureSummary.highest > temperatureSummary.lowest
+                    HStack(alignment: .top) {
+                        Image(systemName: "thermometer.low")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        CircleNumber(number: temperatureSummary.lowestIndex + 1)
+                        Text(info.temperatureText(temperatureSummary.lowest))
+                            .monospacedDigit()
+                            .foregroundStyle(spread ? Color.blue : Color.primary)
+                        Spacer()
+                    }
+                    HStack(alignment: .top) {
+                        Image(systemName: "thermometer.high")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        CircleNumber(number: temperatureSummary.highestIndex + 1)
+                        Text(info.temperatureText(temperatureSummary.highest))
+                            .monospacedDigit()
+                            .foregroundStyle(spread ? Color.red : Color.primary)
+                        Spacer()
+                    }
+                    HStack(alignment: .top) {
+                        Text("\u25b3")
+                            .frame(width: 20, height: 20, alignment: .center)
+                        Spacer(minLength: 8)
+                        Text(String(format: "%.1f °C", temperatureSummary.delta))
+                            .monospacedDigit()
                         Spacer()
                     }
                 }
@@ -316,6 +348,20 @@ private struct CellTemperatureBox: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
+    }
+
+    private func temperatureSymbol(for index: Int) -> String {
+        guard let temperatureSummary else { return "thermometer" }
+        if index == temperatureSummary.lowestIndex { return "thermometer.low" }
+        if index == temperatureSummary.highestIndex { return "thermometer.high" }
+        return "thermometer"
+    }
+
+    private func temperatureTint(for index: Int) -> Color {
+        guard let temperatureSummary, temperatureSummary.highest > temperatureSummary.lowest else { return .primary }
+        if index == temperatureSummary.lowestIndex { return .blue }
+        if index == temperatureSummary.highestIndex { return .red }
+        return .primary
     }
 }
 
