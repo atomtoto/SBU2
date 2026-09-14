@@ -154,27 +154,3 @@ struct CellSummary {
         average = live.reduce(0) { $0 + $1.element } / Double(live.count)
     }
 }
-
-/// Per-temperature-sensor figures derived from the temperature readings.
-struct TemperatureSummary {
-    var lowestIndex: Int
-    var highestIndex: Int
-    var lowest: Double
-    var highest: Double
-    /// The mean of the populated sensors.
-    var average: Double
-
-    var delta: Double { highest - lowest }
-
-    init?(temperatures: [Double]) {
-        let live = temperatures.enumerated().filter { $0.element > -273.15 }
-        guard let low = live.min(by: { $0.element < $1.element }),
-              let high = live.max(by: { $0.element < $1.element })
-        else { return nil }
-        lowestIndex = low.offset
-        highestIndex = high.offset
-        lowest = low.element
-        highest = high.element
-        average = live.reduce(0) { $0 + $1.element } / Double(live.count)
-    }
-}
