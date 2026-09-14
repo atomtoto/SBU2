@@ -71,7 +71,13 @@ struct DeviceListView: View {
                     }
                 }
             }
-            .refreshable { connection.startScanning() }
+            // The scan itself is fire-and-forget, so hold the refresh control for a
+            // minimum time: a rescan that finds nothing new collapses the indicator
+            // almost before it has appeared, which reads as a flicker, not a refresh.
+            .refreshable {
+                connection.startScanning()
+                try? await Task.sleep(for: .seconds(0.8))
+            }
             .navigationDestination(item: $opened) { device in
                 DeviceTabsView(deviceName: connection.displayName(for: device))
             }

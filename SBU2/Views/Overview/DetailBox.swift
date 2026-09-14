@@ -59,7 +59,8 @@ struct DetailBox: View {
                     .font(.system(size: 14, weight: .bold))
                 Text(info.voltageText)
                     .font(.system(size: 14, weight: .bold))
-                Text(info.capacityText(unit: capacityUnit))
+                Text(info.capacityText(unit: capacityUnit,
+                                       cellNominalMillivolts: settings.cellNominalVoltage))
                     .font(.system(size: 13, weight: .bold))
                     .lineLimit(1)
             }
@@ -90,7 +91,8 @@ struct DetailBox: View {
 
             figure("Current", info.currentText)
             figure("Voltage", info.voltageText)
-            figure("Capacity", info.capacityText(unit: capacityUnit))
+            figure("Capacity", info.capacityText(unit: capacityUnit,
+                                                 cellNominalMillivolts: settings.cellNominalVoltage))
         }
     }
 

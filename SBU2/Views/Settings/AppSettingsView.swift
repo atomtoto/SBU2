@@ -31,7 +31,7 @@ struct AppSettingsView: View {
             } header: {
                 Text("Units")
             } footer: {
-                Text("This changes the display of the remaining capacity in Overview. kWh are estimated from the measured pack voltage.")
+                Text("This changes the display of the remaining capacity in Overview. kWh are estimated from the pack's nominal voltage: its series cell count times the nominal cell voltage set for the device.")
             }
 
             Section {

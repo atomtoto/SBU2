@@ -80,16 +80,23 @@ extension BasicInfo {
 
     /// Remaining capacity, either as amp-hours or as an energy estimate.
     ///
-    /// The watt-hour figure multiplies the amp-hours by the *measured* pack voltage,
-    /// which is the honest conversion. SBU instead multiplied by the configured cell
-    /// nominal voltage times a hardcoded 13 cells, which was wrong for any other pack.
-    func capacityText(unit: CapacityUnit) -> String {
+    /// The watt-hour figure charges the amp-hours at the pack's *nominal* voltage —
+    /// the series cell count the BMS reports times the nominal per-cell figure from
+    /// the device's settings. A lithium pack spends nearly its whole discharge
+    /// within a few percent of that voltage, which is what makes the multiplication
+    /// honest for energy, and the figure no longer swims up and down with the load.
+    /// SBU used the same nominal multiplication but hardcoded the 13 cells, which
+    /// was wrong for any other pack; the count here is the pack's own.
+    func capacityText(unit: CapacityUnit, cellNominalMillivolts: Int) -> String {
         switch unit {
         case .ampereHours:
             return residualCapacity.formatted(decimals: 2, unit: "Ah")
                 + " / " + nominalCapacity.formatted(decimals: 2, unit: "Ah")
         case .wattHours:
-            let reference = packVoltage > 0 ? packVoltage : 0
+            // Before the first frame arrives the count is not yet known; fall back
+            // to the measured voltage rather than print a zero that is not true.
+            let nominal = Double(cellCount * cellNominalMillivolts) / 1000
+            let reference = nominal > 0 ? nominal : packVoltage
             return (residualCapacity * reference / 1000).formatted(decimals: 2, unit: "kWh")
                 + " / " + (nominalCapacity * reference / 1000).formatted(decimals: 2, unit: "kWh")
         }

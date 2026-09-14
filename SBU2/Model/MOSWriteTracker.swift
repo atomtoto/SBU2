@@ -30,6 +30,11 @@ struct MOSWriteTracker: Equatable {
     /// How long to wait for the pack to report the requested state before giving up.
     static let timeout: TimeInterval = 10
 
+    /// The shortest time the spinner is shown, however quickly the pack confirms.
+    /// A confirmation can land inside a single poll cycle, which read as a flicker
+    /// rather than an answer.
+    static let minimumPresentation: TimeInterval = 0.8
+
     private(set) var request: Request?
 
     var isBusy: Bool { request != nil }
@@ -50,10 +55,15 @@ struct MOSWriteTracker: Equatable {
 
     /// Clears the request once the pack reports the state that was asked for.
     /// Returns `true` when that just happened.
+    ///
+    /// A confirmation that arrives inside `minimumPresentation` is held back until
+    /// the floor has passed, so the spinner is never a single-frame flicker. The
+    /// answer is still the pack's; only its showing is delayed.
     @discardableResult
-    mutating func reconcile(chargeEnabled: Bool, dischargeEnabled: Bool) -> Bool {
+    mutating func reconcile(chargeEnabled: Bool, dischargeEnabled: Bool, now: Date = .now) -> Bool {
         guard let request else { return false }
         guard request.charge == chargeEnabled, request.discharge == dischargeEnabled else { return false }
+        guard now.timeIntervalSince(request.sentAt) >= Self.minimumPresentation else { return false }
         self.request = nil
         return true
     }

@@ -293,6 +293,7 @@ final class BMSConnection: NSObject {
         clearAlertsOutcome = .idle
         calibrationOutcome = .idle
         pendingWrite = nil
+        deferredFinish = nil
         openDeviceID = device.id
         settings = DeviceSettingsStore.load(device.id)
 
@@ -357,6 +358,7 @@ final class BMSConnection: NSObject {
         estimator.forget()
         remainingHours = nil
         mosWrite.cancel()
+        deferredFinish = nil
         if let pending = pendingWrite {
             finish(pending.kind, .rejected("The link dropped before the BMS answered."))
         }
@@ -418,6 +420,7 @@ final class BMSConnection: NSObject {
             lastError = "The BMS did not confirm the command within \(Int(MOSWriteTracker.timeout)) seconds."
         }
         expirePendingWrite()
+        settleDeferredFinish()
 
         guard demo == nil else {
             stepDemo()
@@ -648,8 +651,41 @@ final class BMSConnection: NSObject {
         enqueueWrite(commands)
     }
 
+    /// The shortest time the spinner over a one-shot bracket is shown, however
+    /// quickly the BMS answers. Same reasoning as the MOSFET floor: an answer
+    /// inside a frame or two read as a flicker, not a confirmation.
+    private static let minimumWritePresentation: TimeInterval = 0.8
+
+    /// An answer the BMS gave before the presentation floor had passed, settled by
+    /// the next poll tick once the floor is behind it.
+    @ObservationIgnored private var deferredFinish: (kind: PendingWrite.Kind, outcome: WriteOutcome, at: Date)?
+
     private func finish(_ kind: PendingWrite.Kind, _ outcome: WriteOutcome) {
-        pendingWrite = nil
+        // A success that came back almost at once is held until the floor has
+        // passed; the tick settles it from there. Failures are surfaced at once —
+        // there is no value in drawing out bad news.
+        if outcome == .succeeded, let pending = pendingWrite, pending.kind == kind {
+            let elapsed = Date.now.timeIntervalSince(pending.sentAt)
+            if elapsed < Self.minimumWritePresentation {
+                deferredFinish = (kind, outcome, pending.sentAt)
+                return
+            }
+        }
+        settle(kind, outcome)
+    }
+
+    /// Settles a bracket answer whose presentation floor has now passed. Called
+    /// from the poll tick, which runs far more often than the floor is long.
+    private func settleDeferredFinish() {
+        guard let deferred = deferredFinish,
+              Date.now.timeIntervalSince(deferred.at) >= Self.minimumWritePresentation
+        else { return }
+        deferredFinish = nil
+        settle(deferred.kind, deferred.outcome)
+    }
+
+    private func settle(_ kind: PendingWrite.Kind, _ outcome: WriteOutcome) {
+        if pendingWrite?.kind == kind { pendingWrite = nil }
         switch kind {
         case .clearAlerts: clearAlertsOutcome = outcome
         case .calibration: calibrationOutcome = outcome
