@@ -221,7 +221,6 @@ private struct PackSummaryBox: View {
                     HStack(alignment: .top) {
                         Image(systemName: temperatureSymbol(index))
                             .frame(width: 20, height: 20, alignment: .center)
-                            .foregroundStyle(temperatureTint(index))
                         // The pack's own name for the sensor rather than its position
                         // in the list: on a JK pack the third one is the MOSFETs, not
                         // a third probe in the cells, and numbering it "3" said
@@ -230,7 +229,6 @@ private struct PackSummaryBox: View {
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
-                            .foregroundStyle(temperatureTint(index))
                         Spacer()
                     }
                 }
@@ -348,9 +346,9 @@ private struct PackSummaryBox: View {
     /// The hottest and the coldest of the pack's own probes, when they differ.
     ///
     /// The MOSFET sensor is deliberately left out of the comparison. It measures the
-    /// switches rather than the cells, it runs warmer than them nearly all the time,
-    /// and letting it win every round would paint the same reading red for ever —
-    /// which is the one thing a warning colour must not do.
+    /// switches rather than the cells and runs warmer than them nearly all the time,
+    /// so letting it into the comparison would hand it the hot thermometer every
+    /// round and leave the probes that actually differ looking identical.
     private var probeExtremes: (hottest: Int, coldest: Int)? {
         let probes = info.temperatures.indices.filter { info.temperatureLabel($0) != "MOS" }
         guard probes.count > 1,
@@ -366,13 +364,6 @@ private struct PackSummaryBox: View {
         if index == extremes.hottest { return "thermometer.high" }
         if index == extremes.coldest { return "thermometer.low" }
         return "thermometer.medium"
-    }
-
-    private func temperatureTint(_ index: Int) -> Color {
-        guard let extremes = probeExtremes else { return .primary }
-        if index == extremes.hottest { return .red }
-        if index == extremes.coldest { return .blue }
-        return .primary
     }
 }
 
