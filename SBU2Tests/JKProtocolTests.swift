@@ -219,6 +219,22 @@ struct JKCellInfoTests {
         #expect(info.balancingCells.isEmpty)
     }
 
+    @Test("Each cell's wire resistance is read from just past the voltages")
+    func resistances() {
+        // The captured frame carries sixteen of them, the first at 0.413 Ω, and
+        // zeros for the eight cells that are not there.
+        let ohms = JK.cellResistances(Fixtures.cellInfo24, .cells24)
+        #expect(ohms.count == 24)
+        #expect(abs(ohms[0] - 0.413) < 0.0005)
+        #expect(abs(ohms[1] - 0.406) < 0.0005)
+        #expect(ohms[16] == 0)
+
+        // They sit directly after the cell voltages, so the long layout moves them
+        // by the same sixteen bytes the voltages grew by.
+        let long = JK.cellResistances(Fixtures.cellInfo32, .cells32)
+        #expect(long.count == 32)
+    }
+
     @Test("The third temperature is the MOSFETs, and says so")
     func temperatureNames() throws {
         let info = try #require(JK.decodeCellInfo(Fixtures.cellInfo24, .cells24))

@@ -153,6 +153,30 @@ enum JK {
         return (0..<variant.cellCount).map { Double(uint16(frame, 6 + $0 * 2)) / 1000 }
     }
 
+    /// The wire resistance measured at each cell, in ohms.
+    ///
+    /// Sits immediately after the cell voltages, so it moves with the short shift
+    /// rather than the doubled one — it is the block whose growth causes the shift to
+    /// double for everything after it.
+    static func cellResistances(_ frame: [UInt8], _ variant: Variant) -> [Double] {
+        guard frame.count >= frameLength else { return [] }
+        return (0..<variant.cellCount).map {
+            Double(uint16(frame, 64 + variant.shift + $0 * 2)) / 1000
+        }
+    }
+
+    /// What each cell's wiring is costing, in ohms.
+    ///
+    /// A high one is a connection worth looking at rather than a cell worth worrying
+    /// about: it is the resistance of the lead and its crimp, which the pack measures
+    /// by watching how far that cell's voltage moves when current does.
+    static func cellResistances(_ frame: [UInt8], _ variant: Variant) -> [Double] {
+        guard frame.count >= frameLength else { return [] }
+        return (0..<variant.cellCount).map {
+            Double(uint16(frame, 64 + variant.shift + $0 * 2)) / 1000
+        }
+    }
+
     /// The readings the overview is built from.
     ///
     /// The software version and the production date are not in this frame — they come

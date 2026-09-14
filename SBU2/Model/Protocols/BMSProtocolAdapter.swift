@@ -94,6 +94,10 @@ struct BMSEvent: Equatable {
     enum Kind: Equatable {
         case basicInfo(BasicInfo)
         case cellVoltages([Double])
+        /// What each cell's wiring costs, where the family measures it. Only JK does.
+        case cellResistances([Double])
+        /// The wire resistance at each cell, in ohms, for a family that measures it.
+        case cellResistances([Double])
         /// A write the pack acknowledged.
         case accepted
         /// A write the pack refused.

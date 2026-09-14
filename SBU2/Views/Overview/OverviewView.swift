@@ -41,11 +41,12 @@ struct OverviewView: View {
                 if showChargeBox {
                     ChargeBox(settings: $connection.settings)
                 }
-                CellTemperatureBox(info: connection.info,
-                                   summary: connection.cellSummary,
-                                   remainingHours: connection.remainingHours)
+                PackSummaryBox(info: connection.info,
+                               summary: connection.cellSummary,
+                               remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
+                                   resistances: connection.cellResistances,
                                    balancing: connection.info.balancingCells,
                                    summary: connection.cellSummary,
                                    settings: $connection.settings)
@@ -202,7 +203,11 @@ private struct ButtonBox: View {
 
 // MARK: - Temperatures and cell extremes
 
-private struct CellTemperatureBox: View {
+/// Temperatures, the two ends of the cell string, the balancer and what is left to
+/// run — everything about the pack that is a figure rather than a control.
+///
+/// It began as the temperatures alone, which is what it used to be named after.
+private struct PackSummaryBox: View {
     let info: BasicInfo
     let summary: CellSummary?
     /// From the connection rather than from `info`: the estimate leans on the
@@ -214,8 +219,9 @@ private struct CellTemperatureBox: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
                     HStack(alignment: .top) {
-                        Image(systemName: "thermometer")
+                        Image(systemName: temperatureSymbol(index))
                             .frame(width: 20, height: 20, alignment: .center)
+                            .foregroundStyle(temperatureTint(index))
                         // The pack's own name for the sensor rather than its position
                         // in the list: on a JK pack the third one is the MOSFETs, not
                         // a third probe in the cells, and numbering it "3" said
@@ -224,6 +230,7 @@ private struct CellTemperatureBox: View {
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
+                            .foregroundStyle(temperatureTint(index))
                         Spacer()
                     }
                 }
@@ -238,29 +245,21 @@ private struct CellTemperatureBox: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if let summary {
-                    // Tinted like the per-cell list below: the weakest cell red, the
-                    // strongest green, and neither while the pack reads flat.
+                    // A pack whose cells all read the same has no weakest and no
+                    // strongest, so neither row claims one: the figure would be an
+                    // arbitrary cell out of however many are tied, and printing it
+                    // beside a battery icon says it is the low one when it is not.
                     let spread = summary.highest > summary.lowest
-                    HStack(alignment: .top) {
-                        Image(systemName: "battery.25")
-                            .frame(width: 20, height: 20, alignment: .center)
-                            .rotationEffect(.degrees(-90))
-                        CircleNumber(number: summary.lowestIndex + 1)
-                        Text(summary.lowest.formatted(decimals: 3, unit: "V"))
-                            .monospacedDigit()
-                            .foregroundStyle(spread ? Color.red : Color.primary)
-                        Spacer()
-                    }
-                    HStack(alignment: .top) {
-                        Image(systemName: "battery.75")
-                            .frame(width: 20, height: 20, alignment: .center)
-                            .rotationEffect(.degrees(-90))
-                        CircleNumber(number: summary.highestIndex + 1)
-                        Text(summary.highest.formatted(decimals: 3, unit: "V"))
-                            .monospacedDigit()
-                            .foregroundStyle(spread ? Color.green : Color.primary)
-                        Spacer()
-                    }
+                    extremeRow(symbol: "battery.25",
+                               cell: summary.lowestIndex,
+                               volts: summary.lowest,
+                               tint: .red,
+                               spread: spread)
+                    extremeRow(symbol: "battery.75",
+                               cell: summary.highestIndex,
+                               volts: summary.highest,
+                               tint: .green,
+                               spread: spread)
                     HStack(alignment: .top) {
                         Text("△")
                             .frame(width: 20, height: 20, alignment: .center)
@@ -316,6 +315,64 @@ private struct CellTemperatureBox: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
+    }
+
+    /// One end of the cell string — or the fact that the pack does not have ends
+    /// worth naming, which is what a flat pack looks like.
+    ///
+    /// The row keeps its shape either way so the box does not change height as the
+    /// cells drift apart and back together; it is the dash, the greying and the word
+    /// that carry the difference.
+    @ViewBuilder
+    private func extremeRow(symbol: String,
+                            cell: Int,
+                            volts: Double,
+                            tint: Color,
+                            spread: Bool) -> some View {
+        HStack(alignment: .top) {
+            Image(systemName: symbol)
+                .frame(width: 20, height: 20, alignment: .center)
+                .rotationEffect(.degrees(-90))
+                .foregroundStyle(spread ? Color.primary : Color.secondary)
+            CircleLabel(text: spread ? "\(cell + 1)" : "–")
+                .opacity(spread ? 1 : 0.45)
+            Text(spread ? volts.formatted(decimals: 3, unit: "V") : "none")
+                .monospacedDigit()
+                .foregroundStyle(spread ? tint : Color.secondary)
+            Spacer()
+        }
+    }
+
+    // MARK: - Which probe is running hot
+
+    /// The hottest and the coldest of the pack's own probes, when they differ.
+    ///
+    /// The MOSFET sensor is deliberately left out of the comparison. It measures the
+    /// switches rather than the cells, it runs warmer than them nearly all the time,
+    /// and letting it win every round would paint the same reading red for ever —
+    /// which is the one thing a warning colour must not do.
+    private var probeExtremes: (hottest: Int, coldest: Int)? {
+        let probes = info.temperatures.indices.filter { info.temperatureLabel($0) != "MOS" }
+        guard probes.count > 1,
+              let hottest = probes.max(by: { info.temperatures[$0] < info.temperatures[$1] }),
+              let coldest = probes.min(by: { info.temperatures[$0] < info.temperatures[$1] }),
+              info.temperatures[hottest] > info.temperatures[coldest]
+        else { return nil }
+        return (hottest, coldest)
+    }
+
+    private func temperatureSymbol(_ index: Int) -> String {
+        guard let extremes = probeExtremes else { return "thermometer.medium" }
+        if index == extremes.hottest { return "thermometer.high" }
+        if index == extremes.coldest { return "thermometer.low" }
+        return "thermometer.medium"
+    }
+
+    private func temperatureTint(_ index: Int) -> Color {
+        guard let extremes = probeExtremes else { return .primary }
+        if index == extremes.hottest { return .red }
+        if index == extremes.coldest { return .blue }
+        return .primary
     }
 }
 

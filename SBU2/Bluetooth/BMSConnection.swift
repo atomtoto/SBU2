@@ -98,6 +98,9 @@ final class BMSConnection: NSObject {
     /// about the pack rather than what it is — no answer yet.
     private(set) var hasReading = false
     private(set) var cellVoltages: [Double] = []
+    /// The wire resistance at each cell, where the pack measures it. Empty on a
+    /// family that does not, which is what keeps the readout picker off their screen.
+    private(set) var cellResistances: [Double] = []
     private(set) var lastUpdate: Date?
     private(set) var lastError: String?
     /// Hours until the pack is full, or empty on the way down. Recomputed as each
@@ -301,6 +304,7 @@ final class BMSConnection: NSObject {
         info = BasicInfo()
         hasReading = false
         cellVoltages = []
+        cellResistances = []
         lastUpdate = nil
         estimator.forget()
         remainingHours = nil
@@ -658,6 +662,9 @@ final class BMSConnection: NSObject {
                                dischargeEnabled: decoded.dischargeMOSEnabled)
         case .cellVoltages(let voltages):
             cellVoltages = voltages
+            lastUpdate = .now
+        case .cellResistances(let resistances):
+            cellResistances = resistances
             lastUpdate = .now
         case .accepted:
             if let pending = pendingWrite, answered?.bytes == pending.terminator.bytes {

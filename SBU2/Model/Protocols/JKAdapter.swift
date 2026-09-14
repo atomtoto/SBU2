@@ -206,7 +206,9 @@ final class JKAdapter: BMSProtocolAdapter {
             info.powerOnCount = identity?.powerOnCount
             return [BMSEvent(register: type.rawValue, kind: .basicInfo(info)),
                     BMSEvent(register: type.rawValue,
-                             kind: .cellVoltages(JK.cellVoltages(frame, layout)))]
+                             kind: .cellVoltages(JK.cellVoltages(frame, layout))),
+                    BMSEvent(register: type.rawValue,
+                             kind: .cellResistances(JK.cellResistances(frame, layout)))]
 
         case .settings:
             // Thresholds and limits. Nothing reads them yet.

@@ -250,6 +250,29 @@ struct BalancingTests {
     }
 }
 
+@Suite("Cell readouts")
+struct CellReadoutTests {
+
+    @Test("Both readouts are labelled, and voltages come first")
+    func readouts() {
+        #expect(CellReadout.allCases.map(\.label) == ["Voltages", "Resistances"])
+    }
+
+    @Test("A pack whose cells all read the same has no ends worth naming")
+    func flatPack() throws {
+        // Four identical cells: a lowest and a highest still exist as indices, but
+        // there is no spread, and the box says "none" rather than picking one of the
+        // four at random and calling it the weak one.
+        let flat = try #require(CellSummary(voltages: [3.300, 3.300, 3.300, 3.300]))
+        #expect(flat.deltaMillivolts == 0)
+        #expect(flat.highest == flat.lowest)
+
+        let spread = try #require(CellSummary(voltages: [3.300, 3.310, 3.300, 3.300]))
+        #expect(spread.highest > spread.lowest)
+        #expect(abs(spread.deltaMillivolts - 10) < 0.001)
+    }
+}
+
 @Suite("Protocol registry")
 struct BMSProtocolRegistryTests {
 
