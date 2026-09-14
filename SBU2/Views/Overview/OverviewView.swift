@@ -248,6 +248,12 @@ private struct PackSummaryBox: View {
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
+                        // The same light the GPS screen puts beside the hottest
+                        // reading, here beside every one of them. The thermometer to
+                        // the left says which probe this is against the others; the
+                        // light says what the figure is worth on its own.
+                        IndicatorLight(tint: .packTemperature(value))
+                            .frame(height: 20)
                         Spacer()
                     }
                 }

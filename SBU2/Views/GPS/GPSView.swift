@@ -321,20 +321,3 @@ private struct GPSListView: View {
             .frame(minHeight: 44)
     }
 }
-
-/// A small coloured light, haloed so it reads as an indicator rather than as a
-/// bullet point in front of the figure.
-private struct IndicatorLight: View {
-    let tint: Color
-
-    var body: some View {
-        Circle()
-            .fill(tint)
-            .frame(width: 9, height: 9)
-            .overlay {
-                Circle().stroke(tint.opacity(0.3), lineWidth: 3.5)
-            }
-            .frame(width: 16, height: 16)
-            .animation(.easeInOut(duration: 0.4), value: tint)
-    }
-}
