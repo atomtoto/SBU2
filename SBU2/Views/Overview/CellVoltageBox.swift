@@ -255,16 +255,20 @@ struct CellVoltageBox: View {
             Text("\(entry.index + 1)")
                 .font(.system(size: compact ? 11 : 13, weight: .heavy))
                 .monospacedDigit()
-                .foregroundStyle(indexColour)
             if balancing.contains(entry.index) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: compact ? 9 : 11))
                     .transition(.scale.combined(with: .opacity))
             }
         }
+        // One colour for the pair. The bolt used to take the default, which was near
+        // enough to the number's secondary grey to pass — until the number was
+        // darkened for the dark interface and the bolt stayed white beside it.
+        .foregroundStyle(indexColour)
     }
 
-    /// The cell number, taken a shade darker in a dark interface.
+    /// The cell number and its balancing bolt, taken a shade darker in a dark
+    /// interface.
     ///
     /// The bar it sits on is the accent fill, a light orange whichever way the
     /// interface is set, so in the dark the number reads better going down than up —
