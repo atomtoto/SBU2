@@ -108,6 +108,28 @@ struct DeviceSettingsTests {
                                                from: JSONEncoder().encode(settings))
         #expect(decoded.refillTarget == .full)
     }
+
+    @Test("Forgetting a device drops everything it had stored")
+    func forgetPurgesTheStore() {
+        let id = "FORGET-ME-\(UUID().uuidString)"
+        var settings = DeviceSettings()
+        settings.name = "Van"
+        settings.autoConnect = true
+        settings.storedIcon = .emoji("🚐")
+        DeviceSettingsStore.save(settings, for: id)
+        defer { DeviceSettingsStore.forget(id) }
+
+        #expect(DeviceSettingsStore.load(id).name == "Van")
+
+        DeviceSettingsStore.forget(id)
+
+        // What loads next is the factory device again, as if never seen.
+        let reloaded = DeviceSettingsStore.load(id)
+        #expect(reloaded.name.isEmpty)
+        #expect(!reloaded.autoConnect)
+        #expect(reloaded.storedIcon == nil)
+    }
+
 }
 
 @Suite("Stored app settings")

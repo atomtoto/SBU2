@@ -8,6 +8,10 @@ import SwiftUI
 /// Per-device preferences — the "More" tab of SBU.
 struct DeviceSettingsView: View {
     @Environment(BMSConnection.self) private var connection
+    /// Pops back to the device list once the device is forgotten: the destination
+    /// goes away, the list's own handler closes the connection behind it.
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmingForget = false
 
     var body: some View {
         @Bindable var connection = connection
@@ -138,9 +142,64 @@ struct DeviceSettingsView: View {
             } footer: {
                 Text("Charge Limit allows you to stop the charge at a certain chosen value. The function appears when the battery is charging. The empty and full voltages also scale the cell voltage bars in Overview. The chemistry decides how the remaining charge time is worked out: an LFP pack charges at a steady current almost to the top, a Li-ion one starts slowing down with a quarter still to go.")
             }
+
+            Section {
+                Button(forgetTitle, role: .destructive) {
+                    confirmingForget = true
+                }
+            } footer: {
+                Text(connection.isDemoOpen
+                     ? "Restores the simulated pack's settings to their defaults. It stays in the list, ready to be customised again."
+                     : "Removes everything the app remembers about this device — its name, icon, auto-connect and every customised setting. Nothing on the pack itself is changed, and it can be connected again at any time.")
+            }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(connection.isDemoOpen
+                                ? "Reset the demo pack?"
+                                : "Forget “\(displayName)”?",
+                            isPresented: $confirmingForget,
+                            titleVisibility: .visible) {
+            Button(connection.isDemoOpen ? "Reset" : "Forget", role: .destructive, action: forget)
+            Button("Cancel", role: .cancel) { confirmingForget = false }
+        } message: {
+            Text(forgetWarning)
+        }
+    }
+
+    /// What the pack is called this very moment — the name the user is about to stop
+    /// seeing, put in the dialog's title so the target of the tap is unambiguous.
+    private var displayName: String {
+        connection.settings.name.isEmpty ? "this BMS" : connection.settings.name
+    }
+
+    /// The simulated pack is not forgotten — there is nothing to disconnect from —
+    /// only reset.
+    private var forgetTitle: String {
+        connection.isDemoOpen ? "Reset Demo Settings" : "Forget This BMS"
+    }
+
+    /// What the tap irreversibly costs, spelled out before it happens: everything
+    /// the app holds for this device, and the scheduled refill where one is set.
+    private var forgetWarning: String {
+        if connection.isDemoOpen {
+            return "The demo pack keeps its place in the list. Its name, family and customised settings go back to the defaults."
+        }
+        if connection.settings.refillLaterEnabled {
+            return "This erases the device's name, icon, password, calibration, charge limit and styles — and cancels the refill you have scheduled. It cannot be undone."
+        }
+        return "This erases the device's name, icon, password, calibration, charge limit and styles. It cannot be undone; reconnecting starts it from factory settings."
+    }
+
+    /// Drops the device's settings and leaves. The connection is closed here rather
+    /// than left to the list's handler alone, so the forget does not stand or fall
+    /// with the details of the navigation back; the second close that handler then
+    /// runs is a no-op. The dismiss is queued past the dialog's own dismissal, which
+    /// does not always survive being fired from inside the dialog's action.
+    private func forget() {
+        connection.forgetOpenDevice()
+        connection.close()
+        Task { @MainActor in dismiss() }
     }
 }
 

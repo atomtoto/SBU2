@@ -89,7 +89,15 @@ struct DeviceListView: View {
                 }
             }
             .onChange(of: opened) { _, value in
-                if value == nil { connection.close() }
+                if value == nil {
+                    // Returning from a device that was just forgotten: drop the icon
+                    // pick made this session too, or the card would go on wearing it
+                    // until the next launch even though the disk was purged.
+                    if let forgotten = connection.takeForgottenDeviceID() {
+                        pickedIcons.removeValue(forKey: forgotten)
+                    }
+                    connection.close()
+                }
             }
             .onChange(of: appSettings.showDemoDevice, initial: true) { _, show in
                 connection.setShowDemoDevice(show)

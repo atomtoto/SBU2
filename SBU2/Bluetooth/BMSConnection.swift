@@ -147,9 +147,42 @@ final class BMSConnection: NSObject {
 
     private(set) var openDeviceID: String?
 
+    /// Whether the open device's settings may still be written back.
+    ///
+    /// Flipped off the moment the device is forgotten: the tabs watch `settings`
+    /// and persist on every change, and without this a stray change landing between
+    /// the forget and the close would rewrite the key that was just purged.
+    private var persistsSettings = true
+
+    /// The device the user just asked the app to forget, kept until something acts
+    /// on it. The device list takes it to drop the icon it has been holding in
+    /// memory for that device — the one piece of its settings that is mirrored
+    /// outside the store.
+    private var forgottenDeviceID: String?
+
+    /// Hands the forgotten device's id to whoever asked, once.
+    func takeForgottenDeviceID() -> String? {
+        defer { forgottenDeviceID = nil }
+        return forgottenDeviceID
+    }
+
     func saveSettings() {
-        guard let openDeviceID else { return }
+        guard let openDeviceID, persistsSettings else { return }
         DeviceSettingsStore.save(settings, for: openDeviceID)
+    }
+
+    /// Drops everything the app remembers about the open device, and stops writing
+    /// its settings back: from here to the close, there is nothing left to save to.
+    /// The in-memory copy goes back to factory too — nothing that still reads it in
+    /// the frames before the close should see the pack the user just erased. The
+    /// mutation re-enters `saveSettings` through the tabs' observer, which the
+    /// guard above turns away.
+    func forgetOpenDevice() {
+        guard let openDeviceID else { return }
+        persistsSettings = false
+        forgottenDeviceID = openDeviceID
+        DeviceSettingsStore.forget(openDeviceID)
+        settings = DeviceSettings()
     }
 
     var cellSummary: CellSummary? { CellSummary(voltages: cellVoltages) }
@@ -295,6 +328,8 @@ final class BMSConnection: NSObject {
         pendingWrite = nil
         deferredFinish = nil
         openDeviceID = device.id
+        persistsSettings = true
+        forgottenDeviceID = nil
         settings = DeviceSettingsStore.load(device.id)
 
         // What it is advertising now wins over what it was last opened as. The stored
@@ -335,6 +370,9 @@ final class BMSConnection: NSObject {
         stopPolling()
         demo = nil
         openDeviceID = nil
+        // Ready for the next open, which re-arms this anyway; kept here so the flag
+        // never outlives the session it was cleared for.
+        persistsSettings = true
         if let peripheral {
             central.cancelPeripheralConnection(peripheral)
         } else {

@@ -395,4 +395,12 @@ enum DeviceSettingsStore {
         guard let data = try? JSONEncoder().encode(settings) else { return }
         UserDefaults.standard.set(data, forKey: key(for: id))
     }
+
+    /// Drops everything the app remembers about one device: its name, its kind,
+    /// its icon, its auto-connect and every overview choice. The next time the pack
+    /// is opened it starts from factory settings again, exactly as a pack the app
+    /// has never seen.
+    static func forget(_ id: String) {
+        UserDefaults.standard.removeObject(forKey: key(for: id))
+    }
 }
