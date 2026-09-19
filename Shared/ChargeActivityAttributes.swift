@@ -19,4 +19,8 @@ struct ChargeActivityAttributes: ActivityAttributes {
     }
 
     let deviceName: String
+    /// The device's chosen SF Symbol. Emoji and Genmoji deliberately remain `nil`
+    /// because ActivityKit's compact presentations cannot carry their app-owned
+    /// rendering data reliably; those presentations keep the charging bolt.
+    let deviceSymbolName: String?
 }

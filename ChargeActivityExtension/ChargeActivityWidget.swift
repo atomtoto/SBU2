@@ -23,7 +23,7 @@ struct ChargeActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label("Charging", systemImage: "bolt.fill")
+                    Label("Charging", systemImage: context.attributes.symbolName)
                         .font(.headline)
                         .foregroundStyle(.green)
                 }
@@ -42,14 +42,14 @@ struct ChargeActivityWidget: Widget {
                     .padding(.top, 2)
                 }
             } compactLeading: {
-                Image(systemName: "bolt.fill")
+                Image(systemName: context.attributes.symbolName)
                     .foregroundStyle(.green)
                     .accessibilityLabel("Charging")
             } compactTrailing: {
                 RemainingTimeView(completionDate: context.state.estimatedCompletionDate,
                                   compact: true)
             } minimal: {
-                Image(systemName: "bolt.fill")
+                Image(systemName: context.attributes.symbolName)
                     .foregroundStyle(.green)
                     .accessibilityLabel("Charging")
             }
@@ -64,7 +64,8 @@ private struct ChargeLockScreenView: View {
     var body: some View {
         VStack(spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                Label(context.attributes.deviceName, systemImage: "bolt.fill")
+                Label(context.attributes.deviceName,
+                      systemImage: context.attributes.symbolName)
                     .font(.headline)
                     .foregroundStyle(.green)
                 Spacer()
@@ -94,6 +95,7 @@ private struct ChargeLockScreenView: View {
                                       compact: false)
                         .font(.headline)
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding()
@@ -111,10 +113,16 @@ private struct RemainingTimeView: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: .infinity, alignment: .trailing)
                 .accessibilityLabel("Time remaining")
         } else {
             Text(compact ? "--" : "Estimating…")
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+private extension ChargeActivityAttributes {
+    var symbolName: String { deviceSymbolName ?? "bolt.fill" }
 }

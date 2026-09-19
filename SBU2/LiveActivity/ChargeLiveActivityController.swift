@@ -25,6 +25,7 @@ actor ChargeLiveActivityController {
     func synchronize(reading: BasicInfo,
                      remainingHours: Double?,
                      deviceName: String,
+                     deviceSymbolName: String?,
                      at now: Date = .now) async {
         guard reading.current > Self.chargingThreshold else {
             idleReadings += 1
@@ -40,13 +41,31 @@ actor ChargeLiveActivityController {
         let state = makeState(reading: reading, remainingHours: remainingHours, at: now)
 
         if activity == nil {
-            activity = Activity<ChargeActivityAttributes>.activities.first
+            let ongoingActivities = Activity<ChargeActivityAttributes>.activities
+            activity = ongoingActivities.first
+            // There should only be one charging activity. Clean up any duplicate
+            // left behind by a previous crash before continuing with the survivor.
+            for duplicate in ongoingActivities.dropFirst() {
+                await duplicate.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+
+        // Attributes are immutable. Recreate the activity if the user renamed the
+        // device or selected another symbol while it was already charging.
+        if let activity,
+           activity.attributes.deviceName != deviceName
+            || activity.attributes.deviceSymbolName != deviceSymbolName {
+            await activity.end(nil, dismissalPolicy: .immediate)
+            self.activity = nil
+            lastPublishedState = nil
+            lastPublishedAt = nil
         }
 
         guard let activity else {
             guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
             do {
-                let attributes = ChargeActivityAttributes(deviceName: deviceName)
+                let attributes = ChargeActivityAttributes(deviceName: deviceName,
+                                                          deviceSymbolName: deviceSymbolName)
                 self.activity = try Activity.request(attributes: attributes,
                                                      content: content(for: state, at: now),
                                                      pushType: nil)
@@ -66,11 +85,11 @@ actor ChargeLiveActivityController {
     }
 
     func endImmediately() async {
-        if activity == nil {
-            activity = Activity<ChargeActivityAttributes>.activities.first
+        let ongoingActivities = Activity<ChargeActivityAttributes>.activities
+        guard activity != nil || !ongoingActivities.isEmpty else { return }
+        for ongoingActivity in ongoingActivities {
+            await ongoingActivity.end(nil, dismissalPolicy: .immediate)
         }
-        guard let activity else { return }
-        await activity.end(nil, dismissalPolicy: .immediate)
         self.activity = nil
         lastPublishedState = nil
         lastPublishedAt = nil

@@ -502,11 +502,19 @@ final class BMSConnection: NSObject {
         } else {
             name = "BMS"
         }
+        let symbolName: String?
+        switch settings.icon(isDemo: demo != nil) {
+        case .symbol(let name):
+            symbolName = name
+        case .emoji, .glyph:
+            symbolName = nil
+        }
         let estimate = remainingHours
         Task {
             await chargeLiveActivity.synchronize(reading: info,
                                                  remainingHours: estimate,
-                                                 deviceName: name)
+                                                 deviceName: name,
+                                                 deviceSymbolName: symbolName)
         }
     }
 
