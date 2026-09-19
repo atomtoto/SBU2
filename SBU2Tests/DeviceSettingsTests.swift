@@ -46,6 +46,26 @@ struct DeviceSettingsTests {
         #expect(settings.storedIcon == nil)
         #expect(settings.overviewStyle == .ring)
         #expect(settings.storedCellVoltageStyle == nil)
+        #expect(settings.speedDialStyle == .ring)
+        #expect(settings.speedDialMaximum == 80)
+    }
+
+    @Test("Radio dial preferences survive storage without affecting other devices")
+    func radioDialRoundTrips() throws {
+        var settings = DeviceSettings()
+        settings.speedDialStyle = .radio
+        settings.speedDialMaximum = 140
+        let decoded = try JSONDecoder().decode(DeviceSettings.self,
+                                               from: JSONEncoder().encode(settings))
+        #expect(decoded.speedDialStyle == .radio)
+        #expect(decoded.speedDialMaximum == 140)
+        #expect(DeviceSettings().speedDialStyle == .ring)
+
+        // Invalid stored scales must not produce division by zero or an empty ruler.
+        settings.storedSpeedDialMaximum = 0
+        #expect(settings.speedDialMaximum == 20)
+        settings.storedSpeedDialMaximum = 500
+        #expect(settings.speedDialMaximum == 300)
     }
 
     @Test("Every kind of icon survives being written and read back")

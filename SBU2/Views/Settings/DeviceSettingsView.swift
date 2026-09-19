@@ -255,6 +255,26 @@ struct DialsSettingsView: View {
             } footer: {
                 Text("When a dial is disabled, the information is still visible in the list below the dials.")
             }
+            if settings.showSpeedDial {
+                Section {
+                    Picker("Speed style", selection: $settings.speedDialStyle) {
+                        ForEach(SpeedDialStyle.allCases) { style in
+                            Text(style.label).tag(style)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if settings.speedDialStyle == .radio {
+                        Stepper(value: $settings.speedDialMaximum, in: 20...300, step: 20) {
+                            LabeledContent("Scale maximum", value: "\(settings.speedDialMaximum) \(Locale.current.preferredSpeedUnit.symbol)")
+                        }
+                    }
+                } header: {
+                    Text("Speed dial")
+                } footer: {
+                    Text("Radio combines a moving speed needle with the enabled power and range readouts. The scale stays fixed while riding.")
+                }
+            }
         }
         .navigationTitle("Dials")
         .navigationBarTitleDisplayMode(.inline)

@@ -19,6 +19,7 @@ struct GPSView: View {
         connection.settings.showPowerDial
             && connection.settings.showSpeedDial
             && connection.settings.showRangeDial
+            && connection.settings.speedDialStyle == .ring
     }
 
     var body: some View {
@@ -82,7 +83,7 @@ struct GPSView: View {
             NavigationStack {
                 DialsSettingsView(settings: $connection.settings)
             }
-            .presentationDetents([.fraction(0.4)])
+            .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
     }
@@ -140,7 +141,16 @@ private struct DialsView: View {
 
     var body: some View {
         VStack {
-            if anyDial {
+            if settings.showSpeedDial && settings.speedDialStyle == .radio {
+                RadioSpeedDial(speed: recorder.currentSpeed.converted(to: recorder.speedUnit).value,
+                               unit: recorder.speedUnit.symbol,
+                               maximum: Double(settings.speedDialMaximum),
+                               powerText: settings.showPowerDial ? info.powerText : nil,
+                               powerFraction: abs(info.power) / max(Double(settings.expectedPower), 1),
+                               isCharging: info.current > 0,
+                               rangeText: settings.showRangeDial ? recorder.estimatedRangeText : nil,
+                               onEdit: onEdit)
+            } else if anyDial {
                 HStack {
                     Spacer()
                     if settings.showPowerDial {

@@ -277,6 +277,13 @@ enum RefillTarget: String, Codable, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+enum SpeedDialStyle: String, Codable, CaseIterable, Identifiable {
+    case ring, radio
+
+    var id: Self { self }
+    var label: String { self == .ring ? "Circular" : "Radio" }
+}
+
 /// Everything the app remembers about one BMS, keyed by its peripheral identifier.
 struct DeviceSettings: Codable, Equatable {
     var name = ""
@@ -313,6 +320,21 @@ struct DeviceSettings: Codable, Equatable {
     var showPowerDial = true
     var showSpeedDial = true
     var showRangeDial = true
+
+    // Optional storage preserves settings saved before the radio dial existed.
+    var storedSpeedDialStyle: SpeedDialStyle?
+    var storedSpeedDialMaximum: Int?
+
+    var speedDialStyle: SpeedDialStyle {
+        get { storedSpeedDialStyle ?? .ring }
+        set { storedSpeedDialStyle = newValue }
+    }
+
+    /// In the same local speed unit as TripRecorder. Keep the scale fixed while riding.
+    var speedDialMaximum: Int {
+        get { min(max(storedSpeedDialMaximum ?? 80, 20), 300) }
+        set { storedSpeedDialMaximum = min(max(newValue, 20), 300) }
+    }
 
     var chargeLimitEnabled = false
     var alwaysShowChargeLimit = false
