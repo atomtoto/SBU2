@@ -25,46 +25,41 @@ struct GPSView: View {
     var body: some View {
         @Bindable var connection = connection
 
-        VStack(spacing: 10) {
-            ScrollView {
-                // One stack at the same 10pt the overview stacks its boxes at,
-                // rather than a top padding per box: the gap between the dials and
-                // the figures now matches every other screen's.
-                VStack(spacing: 10) {
-                    DialsView(settings: connection.settings,
-                              info: connection.info,
-                              recorder: recorder) {
-                        showingDialSettings = true
-                    }
-
-                    if allDialsShown && orientation.isPortrait {
-                        HintBanner(symbol: "iphone.landscape",
-                                   message: "Rotate your phone: three dials fit better in landscape.")
-                    }
-
-                    GPSListView(settings: connection.settings,
-                                info: connection.info,
-                                recorder: recorder)
-
-                    if recorder.authorizationDenied {
-                        HintBanner(symbol: "location.slash",
-                                   message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
-                    }
+        ScrollView {
+            // One stack at the same 10pt the overview stacks its boxes at,
+            // rather than a top padding per box: the gap between the dials and
+            // the figures now matches every other screen's.
+            VStack(spacing: 10) {
+                DialsView(settings: connection.settings,
+                          info: connection.info,
+                          recorder: recorder) {
+                    showingDialSettings = true
                 }
-                .padding(.top, 15)
-                .padding(.bottom, 20)
+
+                if allDialsShown && orientation.isPortrait {
+                    HintBanner(symbol: "iphone.landscape",
+                               message: "Rotate your phone: three dials fit better in landscape.")
+                }
+
+                GPSListView(settings: connection.settings,
+                            info: connection.info,
+                            recorder: recorder)
+
+                if recorder.authorizationDenied {
+                    HintBanner(symbol: "location.slash",
+                               message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                }
             }
-
-            HStack(alignment: .center) {
-                // The same pill the MOSFET buttons use — only the colour and
-                // symbol say this one is Reset.
-                GlassPillButton(title: "Reset", color: .red, symbol: "minus.circle") {
-                    recorder.reset()
-                }
-                .padding(.bottom, 20)
+            .padding(.top, 15)
+            .padding(.bottom, 20)
+        }
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .padding(.horizontal, 3)
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            ResetFooter {
+                recorder.reset()
             }
         }
-        .padding(.horizontal, 3)
         .onAppear {
             OrientationLock.shared.allowAllOrientations()
             orientation.start()
@@ -86,6 +81,19 @@ struct GPSView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+    }
+}
+
+/// `safeAreaBar` supplies the native adaptive edge effect and keeps this action
+/// clear of both scrolling content and the tab bar.
+private struct ResetFooter: View {
+    let action: () -> Void
+
+    var body: some View {
+        GlassPillButton(title: "Reset", color: .red, symbol: "minus.circle", action: action)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -145,6 +153,7 @@ private struct DialsView: View {
                 RadioSpeedDial(speed: recorder.currentSpeed.converted(to: recorder.speedUnit).value,
                                unit: recorder.speedUnit.symbol,
                                maximum: Double(settings.speedDialMaximum),
+                               indicatorStyle: settings.radioSpeedIndicatorStyle,
                                powerText: settings.showPowerDial ? info.powerText : nil,
                                powerFraction: abs(info.power) / max(Double(settings.expectedPower), 1),
                                isCharging: info.current > 0,

@@ -265,14 +265,19 @@ struct DialsSettingsView: View {
                     .pickerStyle(.segmented)
 
                     if settings.speedDialStyle == .radio {
+                        Picker("Indicator", selection: $settings.radioSpeedIndicatorStyle) {
+                            ForEach(RadioSpeedIndicatorStyle.allCases) { style in
+                                Label(style.label, systemImage: style.symbol).tag(style)
+                            }
+                        }
                         Stepper(value: $settings.speedDialMaximum, in: 20...300, step: 20) {
-                            LabeledContent("Scale maximum", value: "\(settings.speedDialMaximum) \(Locale.current.preferredSpeedUnit.symbol)")
+                            LabeledContent("Scale span", value: "\(settings.speedDialMaximum) \(Locale.current.preferredSpeedUnit.symbol)")
                         }
                     }
                 } header: {
                     Text("Speed dial")
                 } footer: {
-                    Text("Radio combines a moving speed needle with the enabled power and range readouts. The scale stays fixed while riding.")
+                    Text("The indicator moves to the centre, then the scale scrolls beneath it. Acceleration gives the indicator a subtle movement.")
                 }
             }
         }

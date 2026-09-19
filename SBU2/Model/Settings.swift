@@ -284,6 +284,28 @@ enum SpeedDialStyle: String, Codable, CaseIterable, Identifiable {
     var label: String { self == .ring ? "Circular" : "Radio" }
 }
 
+enum RadioSpeedIndicatorStyle: String, Codable, CaseIterable, Identifiable {
+    case glassNeedle, growingBar, simpleNeedle
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .glassNeedle: "Glass needle"
+        case .growingBar: "Growing bar"
+        case .simpleNeedle: "Simple needle"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .glassNeedle: "circle.fill"
+        case .growingBar: "rectangle.fill"
+        case .simpleNeedle: "line.diagonal"
+        }
+    }
+}
+
 /// Everything the app remembers about one BMS, keyed by its peripheral identifier.
 struct DeviceSettings: Codable, Equatable {
     var name = ""
@@ -324,16 +346,22 @@ struct DeviceSettings: Codable, Equatable {
     // Optional storage preserves settings saved before the radio dial existed.
     var storedSpeedDialStyle: SpeedDialStyle?
     var storedSpeedDialMaximum: Int?
+    var storedRadioSpeedIndicatorStyle: RadioSpeedIndicatorStyle?
 
     var speedDialStyle: SpeedDialStyle {
         get { storedSpeedDialStyle ?? .ring }
         set { storedSpeedDialStyle = newValue }
     }
 
-    /// In the same local speed unit as TripRecorder. Keep the scale fixed while riding.
+    /// Width of the visible tuner scale, in the same local speed unit as TripRecorder.
     var speedDialMaximum: Int {
         get { min(max(storedSpeedDialMaximum ?? 80, 20), 300) }
         set { storedSpeedDialMaximum = min(max(newValue, 20), 300) }
+    }
+
+    var radioSpeedIndicatorStyle: RadioSpeedIndicatorStyle {
+        get { storedRadioSpeedIndicatorStyle ?? .glassNeedle }
+        set { storedRadioSpeedIndicatorStyle = newValue }
     }
 
     var chargeLimitEnabled = false
