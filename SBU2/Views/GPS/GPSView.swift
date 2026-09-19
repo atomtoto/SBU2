@@ -9,9 +9,10 @@ import SwiftUI
 
 struct GPSView: View {
     @Environment(BMSConnection.self) private var connection
+    @Binding var isLandscapeFullscreen: Bool
     @State private var recorder = TripRecorder()
     @State private var showingDialSettings = false
-    @State private var orientation = InterfaceOrientationObserver()
+    @State private var isLandscape = false
 
     /// The rotate hint only earns its place once all three dials are competing for
     /// the same row — with one or two, portrait already has the room.
@@ -22,32 +23,67 @@ struct GPSView: View {
             && connection.settings.speedDialStyle == .ring
     }
 
+    private var usesSplitLandscape: Bool {
+        isLandscape && connection.settings.gpsLandscapeLayout == .split
+    }
+
     var body: some View {
         @Bindable var connection = connection
 
         ScrollView {
-            // One stack at the same 10pt the overview stacks its boxes at,
-            // rather than a top padding per box: the gap between the dials and
-            // the figures now matches every other screen's.
-            VStack(spacing: 10) {
-                DialsView(settings: connection.settings,
-                          info: connection.info,
-                          recorder: recorder) {
-                    showingDialSettings = true
-                }
+            Group {
+                if usesSplitLandscape {
+                    GPSLandscapeColumns(
+                        dialsFraction: connection.settings.showSpeedDial
+                            && connection.settings.speedDialStyle == .radio ? 0.5 : 0.38,
+                        spacing: 10
+                    ) {
+                        DialsView(settings: connection.settings,
+                                  info: connection.info,
+                                  recorder: recorder,
+                                  vertical: true) {
+                            showingDialSettings = true
+                        }
+                        .frame(maxWidth: .infinity)
 
-                if allDialsShown && orientation.isPortrait {
-                    HintBanner(symbol: "iphone.landscape",
-                               message: "Rotate your phone: three dials fit better in landscape.")
-                }
+                        VStack(spacing: 10) {
+                            GPSListView(settings: connection.settings,
+                                        info: connection.info,
+                                        recorder: recorder)
 
-                GPSListView(settings: connection.settings,
-                            info: connection.info,
-                            recorder: recorder)
+                            if recorder.authorizationDenied {
+                                HintBanner(symbol: "location.slash",
+                                           message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    // One stack at the same 10pt the overview stacks its boxes at,
+                    // rather than a top padding per box: the gap between the dials and
+                    // the figures now matches every other screen's.
+                    VStack(spacing: 10) {
+                        DialsView(settings: connection.settings,
+                                  info: connection.info,
+                                  recorder: recorder,
+                                  vertical: false) {
+                            showingDialSettings = true
+                        }
 
-                if recorder.authorizationDenied {
-                    HintBanner(symbol: "location.slash",
-                               message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                        if allDialsShown && !isLandscape {
+                            HintBanner(symbol: "iphone.landscape",
+                                       message: "Rotate your phone: three dials fit better in landscape.")
+                        }
+
+                        GPSListView(settings: connection.settings,
+                                    info: connection.info,
+                                    recorder: recorder)
+
+                        if recorder.authorizationDenied {
+                            HintBanner(symbol: "location.slash",
+                                       message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                        }
+                    }
                 }
             }
             .padding(.top, 15)
@@ -56,23 +92,32 @@ struct GPSView: View {
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .padding(.horizontal, 3)
         .safeAreaBar(edge: .bottom, spacing: 0) {
-            ResetFooter {
-                recorder.reset()
+            if !isLandscapeFullscreen {
+                ResetFooter {
+                    recorder.reset()
+                }
             }
+        }
+        .toolbarVisibility(isLandscapeFullscreen ? .hidden : .visible, for: .tabBar)
+        .onGeometryChange(for: Bool.self) { proxy in
+            proxy.size.width > proxy.size.height
+        } action: { landscape in
+            isLandscape = landscape
         }
         .onAppear {
             OrientationLock.shared.allowAllOrientations()
-            orientation.start()
-            recorder.update(reading: connection.info)
+            recorder.update(reading: connection.info,
+                            cellNominalMillivolts: connection.settings.cellNominalVoltage)
             recorder.start()
         }
         .onDisappear {
+            isLandscapeFullscreen = false
             OrientationLock.shared.lockToPortrait()
-            orientation.stop()
             recorder.stop()
         }
         .onChange(of: connection.info) { _, reading in
-            recorder.update(reading: reading)
+            recorder.update(reading: reading,
+                            cellNominalMillivolts: connection.settings.cellNominalVoltage)
         }
         .sheet(isPresented: $showingDialSettings) {
             NavigationStack {
@@ -94,6 +139,52 @@ private struct ResetFooter: View {
             .padding(.top, 8)
             .padding(.bottom, 6)
             .frame(maxWidth: .infinity)
+    }
+}
+
+/// The radio tuner benefits from equal columns, while circular dials have a capped
+/// diameter and give their unused width to the figures list instead.
+private struct GPSLandscapeColumns: Layout {
+    let dialsFraction: CGFloat
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize,
+                      subviews: Subviews,
+                      cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+
+        let totalWidth = proposal.width
+            ?? subviews.reduce(CGFloat.zero) { width, subview in
+                width + subview.sizeThatFits(.unspecified).width
+            } + spacing
+        let availableWidth = max(totalWidth - spacing, 0)
+        let dialsWidth = availableWidth * dialsFraction
+        let listWidth = availableWidth - dialsWidth
+        let dialsSize = subviews[0].sizeThatFits(
+            ProposedViewSize(width: dialsWidth, height: proposal.height))
+        let listSize = subviews[1].sizeThatFits(
+            ProposedViewSize(width: listWidth, height: proposal.height))
+
+        return CGSize(width: totalWidth, height: max(dialsSize.height, listSize.height))
+    }
+
+    func placeSubviews(in bounds: CGRect,
+                       proposal: ProposedViewSize,
+                       subviews: Subviews,
+                       cache: inout ()) {
+        guard subviews.count == 2 else { return }
+
+        let availableWidth = max(bounds.width - spacing, 0)
+        let dialsWidth = availableWidth * dialsFraction
+        let listWidth = availableWidth - dialsWidth
+
+        subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY),
+                          anchor: .topLeading,
+                          proposal: ProposedViewSize(width: dialsWidth, height: nil))
+        subviews[1].place(at: CGPoint(x: bounds.minX + dialsWidth + spacing,
+                                     y: bounds.minY),
+                          anchor: .topLeading,
+                          proposal: ProposedViewSize(width: listWidth, height: nil))
     }
 }
 
@@ -127,6 +218,7 @@ private struct DialsView: View {
     let settings: DeviceSettings
     let info: BasicInfo
     let recorder: TripRecorder
+    let vertical: Bool
     let onEdit: () -> Void
 
     private var enabledDialCount: Int {
@@ -159,6 +251,29 @@ private struct DialsView: View {
                                isCharging: info.current > 0,
                                rangeText: settings.showRangeDial ? recorder.estimatedRangeText : nil,
                                onEdit: onEdit)
+            } else if anyDial && vertical {
+                VStack(spacing: 2) {
+                    if settings.showPowerDial {
+                        Dial(fraction: abs(info.power) / max(Double(settings.expectedPower), 1),
+                             tint: info.current >= 0 ? .purple : .blue,
+                             value: info.powerText,
+                             caption: "Power")
+                    }
+                    if settings.showSpeedDial {
+                        Dial(fraction: recorder.speedFraction,
+                             tint: .green,
+                             value: recorder.currentSpeedText,
+                             caption: "Speed")
+                    }
+                    if settings.showRangeDial {
+                        Dial(fraction: rangeRatio / 2,
+                             tint: rangeTint,
+                             value: recorder.estimatedRangeText,
+                             caption: "Remaining",
+                             captionScale: 15.0 / 17.0)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             } else if anyDial {
                 HStack {
                     Spacer()

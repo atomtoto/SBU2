@@ -49,6 +49,7 @@ struct DeviceSettingsTests {
         #expect(settings.speedDialStyle == .ring)
         #expect(settings.speedDialMaximum == 80)
         #expect(settings.radioSpeedIndicatorStyle == .glassNeedle)
+        #expect(settings.gpsLandscapeLayout == .stacked)
     }
 
     @Test("Radio dial preferences survive storage without affecting other devices")
@@ -57,11 +58,13 @@ struct DeviceSettingsTests {
         settings.speedDialStyle = .radio
         settings.speedDialMaximum = 140
         settings.radioSpeedIndicatorStyle = .growingBar
+        settings.gpsLandscapeLayout = .split
         let decoded = try JSONDecoder().decode(DeviceSettings.self,
                                                from: JSONEncoder().encode(settings))
         #expect(decoded.speedDialStyle == .radio)
         #expect(decoded.speedDialMaximum == 140)
         #expect(decoded.radioSpeedIndicatorStyle == .growingBar)
+        #expect(decoded.gpsLandscapeLayout == .split)
         #expect(DeviceSettings().speedDialStyle == .ring)
 
         // Invalid stored scales must not produce division by zero or an empty ruler.

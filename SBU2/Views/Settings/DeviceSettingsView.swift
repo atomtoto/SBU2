@@ -280,6 +280,18 @@ struct DialsSettingsView: View {
                     Text("The indicator moves to the centre, then the scale scrolls beneath it. Acceleration gives the indicator a subtle movement.")
                 }
             }
+            Section {
+                Picker("Layout", selection: $settings.gpsLandscapeLayout) {
+                    ForEach(GPSLandscapeLayout.allCases) { layout in
+                        Label(layout.label, systemImage: layout.symbol).tag(layout)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Landscape")
+            } footer: {
+                Text("Split places the dials vertically on the left and the trip figures on the right.")
+            }
         }
         .navigationTitle("Dials")
         .navigationBarTitleDisplayMode(.inline)

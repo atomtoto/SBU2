@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5BC20000000000000000001B /* ChargeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC200000000000000000020 /* ChargeActivityAttributes.swift */; };
+		5BC20000000000000000001C /* ChargeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC200000000000000000020 /* ChargeActivityAttributes.swift */; };
+		5BC20000000000000000001D /* ChargeActivityExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 5BC20000000000000000001F /* ChargeActivityExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		5BC20000000000000000001A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -14,11 +20,34 @@
 			remoteGlobalIDString = 5BC200000000000000000004;
 			remoteInfo = SBU2;
 		};
+		5BC20000000000000000001E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5BC200000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5BC200000000000000000023;
+			remoteInfo = ChargeActivityExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5BC200000000000000000022 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5BC20000000000000000001D /* ChargeActivityExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		5BC200000000000000000006 /* SBU2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SBU2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5BC200000000000000000007 /* SBU2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SBU2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5BC20000000000000000001F /* ChargeActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ChargeActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5BC200000000000000000020 /* ChargeActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ChargeActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -30,6 +59,11 @@
 		5BC200000000000000000009 /* SBU2Tests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SBU2Tests;
+			sourceTree = "<group>";
+		};
+		5BC200000000000000000021 /* ChargeActivityExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ChargeActivityExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -49,6 +83,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5BC200000000000000000025 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -57,6 +98,8 @@
 			children = (
 				5BC200000000000000000008 /* SBU2 */,
 				5BC200000000000000000009 /* SBU2Tests */,
+				5BC200000000000000000021 /* ChargeActivityExtension */,
+				5BC200000000000000000020 /* ChargeActivityAttributes.swift */,
 				5BC200000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -66,6 +109,7 @@
 			children = (
 				5BC200000000000000000006 /* SBU2.app */,
 				5BC200000000000000000007 /* SBU2Tests.xctest */,
+				5BC20000000000000000001F /* ChargeActivityExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,10 +124,12 @@
 				5BC20000000000000000000A /* Sources */,
 				5BC20000000000000000000B /* Frameworks */,
 				5BC20000000000000000000C /* Resources */,
+				5BC200000000000000000022 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5BC200000000000000000027 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5BC200000000000000000008 /* SBU2 */,
@@ -94,6 +140,28 @@
 			productName = SBU2;
 			productReference = 5BC200000000000000000006 /* SBU2.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5BC200000000000000000023 /* ChargeActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5BC20000000000000000002A /* Build configuration list for PBXNativeTarget "ChargeActivityExtension" */;
+			buildPhases = (
+				5BC200000000000000000024 /* Sources */,
+				5BC200000000000000000025 /* Frameworks */,
+				5BC200000000000000000026 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5BC200000000000000000021 /* ChargeActivityExtension */,
+			);
+			name = ChargeActivityExtension;
+			packageProductDependencies = (
+			);
+			productName = ChargeActivityExtension;
+			productReference = 5BC20000000000000000001F /* ChargeActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		5BC200000000000000000005 /* SBU2Tests */ = {
 			isa = PBXNativeTarget;
@@ -135,6 +203,9 @@
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = 5BC200000000000000000004;
 					};
+					5BC200000000000000000023 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = 5BC200000000000000000010 /* Build configuration list for PBXProject "SBU2" */;
@@ -152,6 +223,7 @@
 			projectRoot = "";
 			targets = (
 				5BC200000000000000000004 /* SBU2 */,
+				5BC200000000000000000023 /* ChargeActivityExtension */,
 				5BC200000000000000000005 /* SBU2Tests */,
 			);
 		};
@@ -172,6 +244,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5BC200000000000000000026 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -179,6 +258,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5BC20000000000000000001B /* ChargeActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -189,6 +269,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5BC200000000000000000024 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5BC20000000000000000001C /* ChargeActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -196,6 +284,11 @@
 			isa = PBXTargetDependency;
 			target = 5BC200000000000000000004 /* SBU2 */;
 			targetProxy = 5BC20000000000000000001A /* PBXContainerItemProxy */;
+		};
+		5BC200000000000000000027 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5BC200000000000000000023 /* ChargeActivityExtension */;
+			targetProxy = 5BC20000000000000000001E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -333,6 +426,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "SBU2 uses Bluetooth to talk to your JBD BMS.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "SBU2 uses your location to measure speed, distance travelled and remaining range.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -363,6 +457,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "SBU2 uses Bluetooth to talk to your JBD BMS.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "SBU2 uses your location to measure speed, distance travelled and remaining range.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -415,6 +510,56 @@
 			};
 			name = Release;
 		};
+		5BC200000000000000000028 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RVBY9CDKL4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Shared/ChargeActivityExtension-Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = atom.sbu2.ChargeActivityExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5BC200000000000000000029 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RVBY9CDKL4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Shared/ChargeActivityExtension-Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = atom.sbu2.ChargeActivityExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -441,6 +586,15 @@
 			buildConfigurations = (
 				5BC200000000000000000017 /* Debug */,
 				5BC200000000000000000018 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5BC20000000000000000002A /* Build configuration list for PBXNativeTarget "ChargeActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5BC200000000000000000028 /* Debug */,
+				5BC200000000000000000029 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

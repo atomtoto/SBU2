@@ -306,6 +306,14 @@ enum RadioSpeedIndicatorStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum GPSLandscapeLayout: String, Codable, CaseIterable, Identifiable {
+    case stacked, split
+
+    var id: Self { self }
+    var label: String { self == .stacked ? "Stacked" : "Split" }
+    var symbol: String { self == .stacked ? "rectangle.grid.1x2" : "rectangle.split.2x1" }
+}
+
 /// Everything the app remembers about one BMS, keyed by its peripheral identifier.
 struct DeviceSettings: Codable, Equatable {
     var name = ""
@@ -347,6 +355,7 @@ struct DeviceSettings: Codable, Equatable {
     var storedSpeedDialStyle: SpeedDialStyle?
     var storedSpeedDialMaximum: Int?
     var storedRadioSpeedIndicatorStyle: RadioSpeedIndicatorStyle?
+    var storedGPSLandscapeLayout: GPSLandscapeLayout?
 
     var speedDialStyle: SpeedDialStyle {
         get { storedSpeedDialStyle ?? .ring }
@@ -362,6 +371,11 @@ struct DeviceSettings: Codable, Equatable {
     var radioSpeedIndicatorStyle: RadioSpeedIndicatorStyle {
         get { storedRadioSpeedIndicatorStyle ?? .glassNeedle }
         set { storedRadioSpeedIndicatorStyle = newValue }
+    }
+
+    var gpsLandscapeLayout: GPSLandscapeLayout {
+        get { storedGPSLandscapeLayout ?? .stacked }
+        set { storedGPSLandscapeLayout = newValue }
     }
 
     var chargeLimitEnabled = false

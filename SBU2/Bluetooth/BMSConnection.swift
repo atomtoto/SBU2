@@ -220,6 +220,7 @@ final class BMSConnection: NSObject {
     /// avoid interrupting an answer in progress and to notice a dead conversation.
     @ObservationIgnored private var lastNotificationAt: Date?
     @ObservationIgnored private var estimator = ChargeEstimator()
+    @ObservationIgnored private let chargeLiveActivity = ChargeLiveActivityController()
     @ObservationIgnored private var pollTimer: Timer?
     @ObservationIgnored private var sendTimer: Timer?
     @ObservationIgnored private var wantsConnection = false
@@ -320,6 +321,7 @@ final class BMSConnection: NSObject {
     // MARK: - Opening a device
 
     func open(_ device: DiscoveredBMS) {
+        Task { await chargeLiveActivity.endImmediately() }
         central.stopScan()
         lastError = nil
         passwordOutcome = .idle
@@ -366,6 +368,7 @@ final class BMSConnection: NSObject {
     }
 
     func close() {
+        Task { await chargeLiveActivity.endImmediately() }
         wantsConnection = false
         stopPolling()
         demo = nil
@@ -491,6 +494,20 @@ final class BMSConnection: NSObject {
     private func noteForEstimate(_ info: BasicInfo) {
         estimator.update(info, chemistry: settings.chemistry)
         remainingHours = estimator.remainingHours
+        let name: String
+        if !settings.name.isEmpty {
+            name = settings.name
+        } else if case .connected(let connectedName) = status {
+            name = connectedName
+        } else {
+            name = "BMS"
+        }
+        let estimate = remainingHours
+        Task {
+            await chargeLiveActivity.synchronize(reading: info,
+                                                 remainingHours: estimate,
+                                                 deviceName: name)
+        }
     }
 
     private func stepDemo() {
