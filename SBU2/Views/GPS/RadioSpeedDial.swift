@@ -34,15 +34,14 @@ struct RadioSpeedDial: View {
                     .font(.headline)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button(action: onEdit) {
+                Button {
+                    onEdit()
+                } label: {
                     Image(systemName: "slider.horizontal.3")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 32, height: 32)
-                        .background(.quaternary, in: Circle())
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
                 .accessibilityLabel("Edit dials")
             }
 
