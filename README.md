@@ -1,16 +1,13 @@
 # SBU2
 
-Application iOS minimaliste en SwiftUI pour lire et piloter un BMS **JBD**
-(aussi vendu sous les noms Xiaoxiang, Overkill Solar, LLT Power…) via son
-module Bluetooth LE.
+Application iOS en SwiftUI pour lire et piloter un BMS **JBD** (aka Xiaoxiang) ou **JK** via son module Bluetooth LE.
 
-Réécriture depuis zéro de [SBU](https://github.com/atomtoto/SBU) : seule la
-connaissance du protocole a été reprise, tout le code est neuf et repose
+Tout le code est neuf et repose
 uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 
 ## Fonctionnalités
 
-- Recherche des modules JBD à proximité (service BLE `FF00`) et connexion.
+- Recherche des modules JBD/JK à proximité et connexion.
 - Rafraîchissement automatique une fois par seconde, avec reconnexion
   automatique si le dongle coupe la liaison.
 - Tension du pack, courant, puissance, état de charge, capacité restante et
@@ -23,8 +20,8 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 ## Prérequis
 
 - Xcode 16 ou ultérieur.
-- iOS 17 minimum.
-- Un iPhone ou iPad **réel** : le simulateur n'expose pas de Bluetooth LE.
+- iOS 26 minimum.
+- Un iPhone, iPad ou Mac **réel** : le simulateur n'expose pas de Bluetooth LE.
 
 ## Compilation
 
@@ -51,15 +48,41 @@ changements qui ne touchent pas au code.
 
 | Fichier | Rôle |
 | --- | --- |
+| `SBU2/Model/Protocols/BMSProtocolAdapter.swift` | Interface commune à toutes les familles de BMS, et registre des familles connues. |
+| `SBU2/Model/Protocols/JBDAdapter.swift` | Implémentation JBD : commandes de scrutation, séquences d'écriture, lecture des réponses. |
 | `SBU2/Model/JBDProtocol.swift` | Construction et validation des trames JBD. |
 | `SBU2/Model/FrameAssembler.swift` | Recomposition des trames à partir des notifications BLE. |
 | `SBU2/Model/BMSReading.swift` | Décodage des registres `0x03` et `0x04`. |
-| `SBU2/Bluetooth/BMSConnection.swift` | Scan, connexion, interrogation périodique, écritures. |
+| `SBU2/Bluetooth/BMSConnection.swift` | Scan, connexion, file d'envoi, interrogation périodique. |
 | `SBU2/Views/DeviceListView.swift` | Liste des appareils détectés. |
 | `SBU2/Views/Overview/` | Tableau de bord du pack, repris à l'identique de SBU. |
 | `SBU2/Views/GPS/` | Cadrans et relevés de trajet, repris à l'identique de SBU. |
 | `SBU2/Views/Settings/` | Réglages appareil et application. |
 | `SBU2Tests/` | Tests du protocole et du décodage (Swift Testing). |
+
+## Plusieurs familles de BMS
+
+`BMSConnection` ne nomme jamais un registre ni une trame : il demande ses
+commandes à un `BMSProtocolAdapter` et lui redonne les octets reçus, qui lui
+reviennent sous forme d'événements (`basicInfo`, `cellVoltages`, écriture
+acceptée ou refusée). Chaque famille se décrit dans un `BMSProtocolDescriptor` :
+son profil GATT, la façon de reconnaître un appareil à partir de sa publicité
+BLE, et une fabrique. Ajouter une famille revient donc à écrire un adaptateur et
+à l'ajouter à `BMSProtocolRegistry.descriptors` — le scan couvre alors
+automatiquement son service, et aucune vue ne change. La famille retenue est
+mémorisée par appareil (`DeviceSettings.protocolID`).
+
+Seul JBD et JK sont implémentés aujourd'hui.
+
+## Une commande à la fois
+
+Le dongle est un pont série : une requête écrite pendant qu'il répond encore
+tronque la réponse en cours, et CoreBluetooth jette silencieusement une écriture
+« sans réponse » émise alors que sa propre file est pleine. Les commandes
+passent donc par une file vidée d'un cran toutes les 150 ms, et chacune attend
+la réponse de la précédente (avec expiration, et jamais pendant que des octets
+arrivent encore). Un tampon resté incomplet est abandonné au bout d'1,5 s, un
+silence de 5 s remet le flux à zéro, un silence de 12 s relance la liaison.
 
 ## Protocole JBD en deux mots
 
@@ -87,9 +110,8 @@ Registres utilisés :
 
 - La lecture et l'écriture de la configuration complète (seuils de protection,
   capacités, paramètres d'équilibrage) ne sont pas reprises.
-- L'enregistrement des mesures et les graphiques (onglet Logging de SBU) ne sont
+- L'enregistrement des mesures et les graphiques ne sont
   pas repris.
-- La limite de charge est réglable mais n'agit sur rien, exactement comme dans
-  SBU : aucun code ne lit `chargeLimitSOC` en dehors de l'interface.
-- L'interface est en anglais, comme l'application d'origine. Une localisation
-  française viendra plus tard.
+- La limite de charge est réglable mais n'agit sur rien : aucun code ne lit `chargeLimitSOC` en dehors de l'interface.
+- L'interface est en anglais. Une localisation
+  française et autres viendra plus tard.

@@ -6,89 +6,209 @@
 //
 
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 
 struct GPSView: View {
     @Environment(BMSConnection.self) private var connection
+    @Binding var isLandscapeFullscreen: Bool
     @State private var recorder = TripRecorder()
     @State private var showingDialSettings = false
+    @State private var isLandscape = false
+
+    /// The rotate hint only earns its place once all three dials are competing for
+    /// the same row — with one or two, portrait already has the room.
+    private var allDialsShown: Bool {
+        connection.settings.showPowerDial
+            && connection.settings.showSpeedDial
+            && connection.settings.showRangeDial
+            && connection.settings.speedDialStyle == .ring
+    }
+
+    private var usesSplitLandscape: Bool {
+        isLandscape && connection.settings.gpsLandscapeLayout == .split
+    }
 
     var body: some View {
         @Bindable var connection = connection
 
-        VStack(spacing: 10) {
-            ScrollView {
-                DialsView(settings: connection.settings,
-                          info: connection.info,
-                          recorder: recorder) {
-                    showingDialSettings = true
-                }
-                .padding(.top, 15)
+        ScrollView {
+            Group {
+                if usesSplitLandscape {
+                    GPSLandscapeColumns(
+                        dialsFraction: connection.settings.showSpeedDial
+                            && connection.settings.speedDialStyle == .radio ? 0.5 : 0.38,
+                        spacing: 10
+                    ) {
+                        DialsView(settings: connection.settings,
+                                  info: connection.info,
+                                  recorder: recorder,
+                                  vertical: true) {
+                            showingDialSettings = true
+                        }
+                        .frame(maxWidth: .infinity)
 
-                GPSListView(settings: connection.settings,
-                            info: connection.info,
-                            recorder: recorder)
-                    .padding(.top, 15)
-                    .padding(.bottom, 20)
+                        VStack(spacing: 10) {
+                            GPSListView(settings: connection.settings,
+                                        info: connection.info,
+                                        recorder: recorder)
 
-                if recorder.authorizationDenied {
-                    HStack {
-                        Image(systemName: "location.slash")
-                        Text("Location access is off. Enable it in Settings to measure speed, distance and range.")
-                            .font(.footnote)
+                            if recorder.authorizationDenied {
+                                HintBanner(symbol: "location.slash",
+                                           message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal)
-                    .background {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(.ultraThinMaterial)
+                } else {
+                    // One stack at the same 10pt the overview stacks its boxes at,
+                    // rather than a top padding per box: the gap between the dials and
+                    // the figures now matches every other screen's.
+                    VStack(spacing: 10) {
+                        DialsView(settings: connection.settings,
+                                  info: connection.info,
+                                  recorder: recorder,
+                                  vertical: false) {
+                            showingDialSettings = true
+                        }
+
+                        if allDialsShown && !isLandscape {
+                            HintBanner(symbol: "iphone.landscape",
+                                       message: "Rotate your phone: three dials fit better in landscape.")
+                        }
+
+                        GPSListView(settings: connection.settings,
+                                    info: connection.info,
+                                    recorder: recorder)
+
+                        if recorder.authorizationDenied {
+                            HintBanner(symbol: "location.slash",
+                                       message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                        }
                     }
                 }
             }
-
-            HStack(alignment: .center) {
-                Button {
+            .padding(.top, 15)
+            .padding(.bottom, 20)
+        }
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .padding(.horizontal, 3)
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            if !isLandscapeFullscreen {
+                ResetFooter {
                     recorder.reset()
-                    #if canImport(UIKit)
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    #endif
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .foregroundColor(Color(uiColor: .secondarySystemBackground))
-                            .frame(width: 140, height: 37)
-                        HStack {
-                            Text("Reset")
-                                .font(.system(size: 16))
-                            Image(systemName: "minus.circle")
-                        }
-                        .foregroundColor(Color.red)
-                    }
                 }
-                .padding(.bottom, 20)
             }
         }
-        .padding(.horizontal, 3)
+        .toolbarVisibility(isLandscapeFullscreen ? .hidden : .visible, for: .tabBar)
+        .onGeometryChange(for: Bool.self) { proxy in
+            proxy.size.width > proxy.size.height
+        } action: { landscape in
+            isLandscape = landscape
+        }
         .onAppear {
             OrientationLock.shared.allowAllOrientations()
-            recorder.update(reading: connection.info)
+            recorder.update(reading: connection.info,
+                            cellNominalMillivolts: connection.settings.cellNominalVoltage)
             recorder.start()
         }
         .onDisappear {
+            isLandscapeFullscreen = false
             OrientationLock.shared.lockToPortrait()
             recorder.stop()
         }
         .onChange(of: connection.info) { _, reading in
-            recorder.update(reading: reading)
+            recorder.update(reading: reading,
+                            cellNominalMillivolts: connection.settings.cellNominalVoltage)
         }
         .sheet(isPresented: $showingDialSettings) {
             NavigationStack {
                 DialsSettingsView(settings: $connection.settings)
             }
-            .presentationDetents([.fraction(0.4)])
+            .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+    }
+}
+
+/// `safeAreaBar` supplies the native adaptive edge effect and keeps this action
+/// clear of both scrolling content and the tab bar.
+private struct ResetFooter: View {
+    let action: () -> Void
+
+    var body: some View {
+        GlassPillButton(title: "Reset", color: .red, symbol: "minus.circle", action: action)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+/// The radio tuner benefits from equal columns, while circular dials have a capped
+/// diameter and give their unused width to the figures list instead.
+private struct GPSLandscapeColumns: Layout {
+    let dialsFraction: CGFloat
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize,
+                      subviews: Subviews,
+                      cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+
+        let totalWidth = proposal.width
+            ?? subviews.reduce(CGFloat.zero) { width, subview in
+                width + subview.sizeThatFits(.unspecified).width
+            } + spacing
+        let availableWidth = max(totalWidth - spacing, 0)
+        let dialsWidth = availableWidth * dialsFraction
+        let listWidth = availableWidth - dialsWidth
+        let dialsSize = subviews[0].sizeThatFits(
+            ProposedViewSize(width: dialsWidth, height: proposal.height))
+        let listSize = subviews[1].sizeThatFits(
+            ProposedViewSize(width: listWidth, height: proposal.height))
+
+        return CGSize(width: totalWidth, height: max(dialsSize.height, listSize.height))
+    }
+
+    func placeSubviews(in bounds: CGRect,
+                       proposal: ProposedViewSize,
+                       subviews: Subviews,
+                       cache: inout ()) {
+        guard subviews.count == 2 else { return }
+
+        let availableWidth = max(bounds.width - spacing, 0)
+        let dialsWidth = availableWidth * dialsFraction
+        let listWidth = availableWidth - dialsWidth
+
+        subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY),
+                          anchor: .topLeading,
+                          proposal: ProposedViewSize(width: dialsWidth, height: nil))
+        subviews[1].place(at: CGPoint(x: bounds.minX + dialsWidth + spacing,
+                                     y: bounds.minY),
+                          anchor: .topLeading,
+                          proposal: ProposedViewSize(width: listWidth, height: nil))
+    }
+}
+
+/// A one-line notice, icon plus footnote, on the same frosted pill used for both
+/// the location-access warning and the rotate-to-landscape hint below.
+private struct HintBanner: View {
+    let symbol: String
+    let message: String
+
+    var body: some View {
+        HStack {
+            Image(systemName: symbol)
+                .foregroundColor(.accent) //
+            Text(message)
+                .font(.footnote)
+                .foregroundColor(.accent)
+        }
+        .padding()
+        .background {
+            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
+        // The same gutter the two boxes take, since a hint sits between them.
+        .padding(.horizontal, 15)
     }
 }
 
@@ -98,11 +218,18 @@ private struct DialsView: View {
     let settings: DeviceSettings
     let info: BasicInfo
     let recorder: TripRecorder
+    let vertical: Bool
     let onEdit: () -> Void
 
-    private var anyDial: Bool {
-        settings.showPowerDial || settings.showSpeedDial || settings.showRangeDial
+    private var enabledDialCount: Int {
+        [settings.showPowerDial, settings.showSpeedDial, settings.showRangeDial].filter { $0 }.count
     }
+
+    private var anyDial: Bool { enabledDialCount > 0 }
+
+    /// A single dial has the whole row to itself, so it can afford to be a lot
+    /// easier to read at a glance than the size two or three of them have to share.
+    private var isSingleDial: Bool { enabledDialCount == 1 }
 
     /// SBU drew the range arc at half scale, so a ratio of 1 fills only half the
     /// ring. Kept as it was, otherwise the dial would read differently from before.
@@ -114,21 +241,56 @@ private struct DialsView: View {
 
     var body: some View {
         VStack {
-            if anyDial {
-                HStack {
-                    Spacer()
+            if settings.showSpeedDial && settings.speedDialStyle == .radio {
+                RadioSpeedDial(speed: recorder.currentSpeed.converted(to: recorder.speedUnit).value,
+                               unit: recorder.speedUnit.symbol,
+                               maximum: Double(settings.speedDialMaximum),
+                               indicatorStyle: settings.radioSpeedIndicatorStyle,
+                               powerText: settings.showPowerDial ? info.powerText : nil,
+                               powerFraction: abs(info.power) / max(Double(settings.expectedPower), 1),
+                               isCharging: info.current > 0,
+                               rangeText: settings.showRangeDial ? recorder.estimatedRangeText : nil,
+                               onEdit: onEdit)
+            } else if anyDial && vertical {
+                VStack(spacing: 2) {
                     if settings.showPowerDial {
                         Dial(fraction: abs(info.power) / max(Double(settings.expectedPower), 1),
                              tint: info.current >= 0 ? .purple : .blue,
                              value: info.powerText,
                              caption: "Power")
-                        Spacer()
                     }
                     if settings.showSpeedDial {
                         Dial(fraction: recorder.speedFraction,
                              tint: .green,
                              value: recorder.currentSpeedText,
                              caption: "Speed")
+                    }
+                    if settings.showRangeDial {
+                        Dial(fraction: rangeRatio / 2,
+                             tint: rangeTint,
+                             value: recorder.estimatedRangeText,
+                             caption: "Remaining",
+                             captionScale: 15.0 / 17.0)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            } else if anyDial {
+                HStack {
+                    Spacer()
+                    if settings.showPowerDial {
+                        Dial(fraction: abs(info.power) / max(Double(settings.expectedPower), 1),
+                             tint: info.current >= 0 ? .purple : .blue,
+                             value: info.powerText,
+                             caption: "Power",
+                             large: isSingleDial)
+                        Spacer()
+                    }
+                    if settings.showSpeedDial {
+                        Dial(fraction: recorder.speedFraction,
+                             tint: .green,
+                             value: recorder.currentSpeedText,
+                             caption: "Speed",
+                             large: isSingleDial)
                         Spacer()
                     }
                     if settings.showRangeDial {
@@ -136,7 +298,8 @@ private struct DialsView: View {
                              tint: rangeTint,
                              value: recorder.estimatedRangeText,
                              caption: "Remaining",
-                             captionSize: 15)
+                             captionScale: 15.0 / 17.0,
+                             large: isSingleDial)
                         Spacer()
                     }
                 }
@@ -160,7 +323,7 @@ private struct DialsView: View {
             RoundedRectangle(cornerRadius: 25, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 15)
         .contextMenu {
             Button(action: onEdit) {
                 Text("Edit dials")
@@ -184,25 +347,38 @@ private struct Dial: View {
     let tint: Color
     let value: String
     let caption: String
-    var captionSize: CGFloat = 17
+    /// Multiplies the caption's font size — "Remaining" needs to run smaller than
+    /// "Power" or "Speed" to fit under the same width.
+    var captionScale: CGFloat = 1
+    /// The one dial showing, with the row to itself.
+    var large: Bool = false
+
+    private var minDiameter: CGFloat { large ? 175 : 115 }
+    private var maxDiameter: CGFloat { large ? 210 : 140 }
+    private var height: CGFloat { large ? 186 : 124 }
+    private var lineWidth: CGFloat { large ? 18 : 12 }
+    private var valueFontSize: CGFloat { large ? 36 : 23 }
+    private var captionFontSize: CGFloat { (large ? 26 : 17) * captionScale }
+    private var labelInset: CGFloat { large ? 26 : 18 }
+    private var outerPadding: CGFloat { large ? 12 : 8 }
 
     var body: some View {
-        RingGauge(fraction: fraction, tint: tint) {
+        RingGauge(fraction: fraction, tint: tint, lineWidth: lineWidth) {
             VStack {
                 Text(value)
-                    .font(.system(size: 23, weight: .regular))
+                    .font(.system(size: valueFontSize, weight: .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                 Text(caption)
-                    .font(.system(size: captionSize, weight: .bold))
+                    .font(.system(size: captionFontSize, weight: .bold))
                     .multilineTextAlignment(.center)
                     .opacity(0.65)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, labelInset)
         }
-        .frame(minWidth: 115, maxWidth: 140)
-        .frame(height: 124)
-        .padding(8)
+        .frame(minWidth: minDiameter, maxWidth: maxDiameter)
+        .frame(height: height)
+        .padding(outerPadding)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(caption): \(value)")
     }
@@ -217,60 +393,65 @@ private struct GPSListView: View {
 
     var body: some View {
         VStack {
-            VStack {
-                row("Top speed", recorder.topSpeedText)
-                Divider()
-                if !settings.showSpeedDial {
-                    row("Current speed", recorder.currentSpeedText)
+            // The same card every other summary uses, with real list-row metrics
+            // (LabeledContent's secondary-coloured value, a 44pt row) instead of
+            // the cramped, tightly-padded rows this used to be built from.
+            Card {
+                VStack(spacing: 0) {
+                    row("Top speed", recorder.topSpeedText)
                     Divider()
-                }
-                if !settings.showPowerDial {
-                    row("Power (avg.)", recorder.powerText)
+                    if !settings.showSpeedDial {
+                        row("Current speed", recorder.currentSpeedText)
+                        Divider()
+                    }
+                    if !settings.showPowerDial {
+                        row("Power (avg.)", recorder.powerText)
+                        Divider()
+                    }
+                    row("Efficiency", recorder.efficiencyText)
                     Divider()
-                }
-                row("Efficiency", recorder.efficiencyText)
-                Divider()
-                HStack {
-                    Text("Battery remaining")
-                    Spacer()
-                    RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                              tint: .stateOfChargeTrip(info.stateOfCharge),
-                              lineWidth: 4) { EmptyView() }
-                        .frame(width: 13, height: 13)
-                    Text(info.stateOfChargeText)
-                }
-                .padding(5)
-                Divider()
-                if !settings.showRangeDial {
-                    row("Remaining range", recorder.estimatedRangeText)
+                    LabeledContent("Battery remaining") {
+                        HStack(spacing: 6) {
+                            RingGauge(fraction: Double(info.stateOfCharge) / 100,
+                                      tint: .stateOfChargeTrip(info.stateOfCharge),
+                                      lineWidth: 4) { EmptyView() }
+                                .frame(width: 13, height: 13)
+                            Text(info.stateOfChargeText)
+                        }
+                    }
+                    .frame(minHeight: 44)
                     Divider()
+                    if let hottest = info.temperatures.max() {
+                        LabeledContent("Max temperature") {
+                            HStack(spacing: 6) {
+                                IndicatorLight(tint: .packTemperature(hottest))
+                                Text(info.temperatureText(hottest))
+                                    .monospacedDigit()
+                            }
+                        }
+                        .frame(minHeight: 44)
+                        Divider()
+                    }
+                    if !settings.showRangeDial {
+                        row("Remaining range", recorder.estimatedRangeText)
+                        Divider()
+                    }
+                    row("Total distance", recorder.distanceText)
                 }
-                row("Total distance", recorder.distanceText)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-            .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(.ultraThinMaterial)
             }
 
-            HStack {
-                Text("Values represent the average of the last 5 measurements")
-                    .font(.footnote)
-                    .foregroundColor(Color.gray)
-            }
-            .padding(.horizontal)
+            // Footer de type "List Section Footer"
+                    Text("Values represent the average of the last 5 measurements")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading) // Aligné à gauche comme un vrai footer
+                        .padding(.horizontal, 16) // Aligne visuellement le 'V' avec le 'T' de "Top speed" au-dessus
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 15)
     }
 
     private func row(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(value)
-        }
-        .padding(5)
+        LabeledContent(title, value: value)
+            .frame(minHeight: 44)
     }
 }

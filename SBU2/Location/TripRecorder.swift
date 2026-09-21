@@ -30,6 +30,7 @@ final class TripRecorder: NSObject {
     /// The latest pack reading, pushed in by the view so the recorder can convert
     /// speed into consumption without owning the Bluetooth connection.
     @ObservationIgnored private var reading = BasicInfo()
+    @ObservationIgnored private var cellNominalMillivolts = 3_700
     /// SBU averaged the last eight current readings before deriving power, so a
     /// momentary spike does not swing the dial.
     @ObservationIgnored private var recentCurrents: [Double] = []
@@ -54,8 +55,9 @@ final class TripRecorder: NSObject {
         currentSpeed.value = 0
     }
 
-    func update(reading: BasicInfo) {
+    func update(reading: BasicInfo, cellNominalMillivolts: Int) {
         self.reading = reading
+        self.cellNominalMillivolts = cellNominalMillivolts
         recentCurrents.append(reading.current)
         if recentCurrents.count > 8 { recentCurrents.removeFirst() }
     }
@@ -139,8 +141,15 @@ extension TripRecorder: CLLocationManagerDelegate {
         }
         efficiency = watts / speedInDisplayUnit
 
-        let remainingEnergy = reading.residualCapacity * reading.packVoltage   // Wh
-        estimatedRange = Measurement(value: remainingEnergy / efficiency,
+        let remainingEnergy = TripRangeEstimator.remainingEnergy(
+            reading: reading,
+            cellNominalMillivolts: cellNominalMillivolts
+        )
+        guard let remainingDistance = TripRangeEstimator.distance(
+            remainingEnergy: remainingEnergy,
+            efficiency: efficiency
+        ) else { return }
+        estimatedRange = Measurement(value: remainingDistance,
                                      unit: Locale.current.preferredDistanceUnit)
     }
 

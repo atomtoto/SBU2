@@ -30,10 +30,26 @@ struct CircleNumber: View {
     let number: Int
 
     var body: some View {
+        CircleLabel(text: "\(number)")
+    }
+}
+
+/// The same circle, for the readings a pack names rather than numbers — a JK pack's
+/// third temperature is its MOSFETs, and calling it "3" put it in a series it does
+/// not belong to.
+struct CircleLabel: View {
+    let text: String
+
+    var body: some View {
         ZStack {
             Circle()
                 .foregroundColor(Color(uiColor: .tertiarySystemBackground))
-            Text("\(number)")
+            Text(text)
+                // A name has to fit the same circle a single digit does.
+                .font(text.count > 1 ? .system(size: 10, weight: .semibold) : .body)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 2)
         }
         .frame(width: 25, height: 25, alignment: .center)
         .aspectRatio(1, contentMode: .fit)

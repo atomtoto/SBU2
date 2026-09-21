@@ -15,20 +15,23 @@ struct OverviewView: View {
     @Environment(AppSettings.self) private var appSettings
 
     @State private var confirmation: MOSChange?
+    /// Which per-cell figure the two lower boxes are showing. Held here rather than in
+    /// the box with the picker, because the summary above follows the same choice.
+    @State private var readout: CellReadout = .voltages
 
     var body: some View {
         @Bindable var connection = connection
 
         ScrollView {
             LazyVStack(spacing: 10) {
-                if connection.settings.liontronMode == .autoEnabled {
-                    LiontronModeWarning()
-                }
-                DetailBox(info: connection.info, capacityUnit: appSettings.capacityUnit)
+                DetailBox(info: connection.info,
+                          capacityUnit: appSettings.capacityUnit,
+                          settings: $connection.settings)
                     .padding(.top, 5)
                 ButtonBox(info: connection.info,
                           settings: connection.settings,
                           enabled: connection.canControlMOS,
+                          hasReading: connection.hasReading,
                           mosWrite: connection.mosWrite) { change in
                     if appSettings.showMOSFETWarning {
                         confirmation = change
@@ -41,16 +44,28 @@ struct OverviewView: View {
                 if showChargeBox {
                     ChargeBox(settings: $connection.settings)
                 }
-                CellTemperatureBox(info: connection.info,
-                                   summary: connection.cellSummary)
+                PackSummaryBox(info: connection.info,
+                               summary: connection.cellSummary,
+                               resistances: connection.cellResistances,
+                               readout: readout,
+                               remainingHours: connection.remainingHours)
                 if !connection.cellVoltages.isEmpty {
                     CellVoltageBox(voltages: connection.cellVoltages,
+                                   resistances: connection.cellResistances,
                                    balancing: connection.info.balancingCells,
                                    summary: connection.cellSummary,
-                                   emptyMillivolts: Double(connection.settings.cellEmptyVoltage),
-                                   fullMillivolts: Double(connection.settings.cellFullVoltage))
+                                   settings: $connection.settings,
+                                   highContrastFigures: appSettings.highContrastFigures,
+                                   readout: $readout)
                 }
-                BatteryInfoBox(info: connection.info)
+                BatteryInfoBox(info: connection.info,
+                               offersClearingAlerts: connection.offersClearingAlerts,
+                               canClearAlerts: connection.canClearAlerts,
+                               hasReading: connection.hasReading,
+                               isClearingAlerts: connection.isClearingAlerts,
+                               clearAlertsOutcome: connection.clearAlertsOutcome) {
+                    connection.clearAlerts()
+                }
                 if let error = connection.lastError {
                     Card {
                         HStack {
@@ -84,6 +99,12 @@ struct OverviewView: View {
         } message: {
             Text("This command is written to the BMS and really cuts the current on that terminal. You can turn this warning off in Settings.")
         }
+        // A pack that stops reporting its wiring — or one that never did, opened after
+        // one that did — must not leave the screen asking for a readout that is not
+        // there any more.
+        .onChange(of: connection.cellResistances.isEmpty) { _, gone in
+            if gone { readout = .voltages }
+        }
     }
 
     private func perform(_ change: MOSChange) {
@@ -109,95 +130,22 @@ struct MOSChange: Equatable {
     var confirmTitle: String
 }
 
-// MARK: - Liontron warning
-
-private struct LiontronModeWarning: View {
-    @State private var collapsed = true
-
-    var body: some View {
-        VStack {
-            Button {
-                collapsed.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 20) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .renderingMode(.original)
-                    Text("Liontron protection mode active!")
-                    Image(systemName: collapsed ? "chevron.down" : "chevron.up")
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity)
-                .background {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            VStack {
-                Text("You might need to enter the hardware password in settings")
-                    .multilineTextAlignment(.center)
-                    .animation(.none, value: collapsed)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: collapsed ? 0 : .none)
-            .clipped()
-            .animation(.easeOut, value: collapsed)
-            .padding(collapsed ? 0 : 8)
-            .background {
-                RoundedRectangle(cornerRadius: 25, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
-        }
-    }
-}
-
-// MARK: - Detail box
-
-private struct DetailBox: View {
-    let info: BasicInfo
-    let capacityUnit: CapacityUnit
-
-    var body: some View {
-        Card {
-            HStack(alignment: .center, spacing: 20) {
-                RingGauge(fraction: Double(info.stateOfCharge) / 100,
-                          tint: .stateOfChargeOverview(info.stateOfCharge),
-                          glassArc: true) {
-                    Text(info.stateOfChargeText)
-                        .font(.system(size: 24, weight: .bold))
-                }
-                .frame(width: 140, height: 120)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 13) {
-                    Text(info.powerText)
-                        .font(.system(size: 19, weight: .bold))
-                    Text(info.currentText)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(info.voltageText)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(info.capacityText(unit: capacityUnit))
-                        .font(.system(size: 13, weight: .bold))
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-}
-
 // MARK: - Charge / discharge buttons
 
 private struct ButtonBox: View {
     let info: BasicInfo
     let settings: DeviceSettings
     let enabled: Bool
+    /// Whether the pack has said anything yet. Until it has, neither button knows
+    /// what it is showing, and both say so rather than guessing.
+    let hasReading: Bool
     let mosWrite: MOSWriteTracker
     let onChange: (MOSChange) -> Void
 
     private static let on = Color(red: 0, green: 0.6, blue: 0.1)
     private static let off = Color(red: 0.8, green: 0.3, blue: 0.05)
+    /// Neither on nor off: no answer yet.
+    private static let unknown = Color.gray
 
     /// Blue with a clock badge when the charge is being held back on purpose.
     private var chargeHeldForLater: Bool {
@@ -205,35 +153,39 @@ private struct ButtonBox: View {
     }
 
     private var chargeColor: Color {
+        guard hasReading else { return Self.unknown }
         if chargeHeldForLater { return .blue }
-        guard settings.liontronMode != .autoEnabled else { return .gray }
         return info.chargeMOSEnabled ? Self.on : Self.off
     }
 
     private var chargeSymbol: String {
+        guard hasReading else { return Self.unknownSymbol }
         if chargeHeldForLater { return "bolt.badge.clock.fill" }
-        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
         return info.chargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
 
     private var dischargeColor: Color {
-        guard settings.liontronMode != .autoEnabled else { return .gray }
+        guard hasReading else { return Self.unknown }
         return info.dischargeMOSEnabled ? Self.on : Self.off
     }
 
     private var dischargeSymbol: String {
-        guard settings.liontronMode != .autoEnabled else { return "bolt.slash.fill" }
+        guard hasReading else { return Self.unknownSymbol }
         return info.dischargeMOSEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
+
+    /// Not the slashed bolt, which is the pack's way of saying a terminal is off —
+    /// a thing we do not yet know.
+    private static let unknownSymbol = "ellipsis"
 
     var body: some View {
         Card(padding: 0) {
             HStack(alignment: .center, spacing: 20) {
-                MOSButton(title: "Charging",
-                          color: chargeColor,
-                          symbol: chargeSymbol,
-                          isWaiting: mosWrite.isWaiting(for: .charge),
-                          isBusy: mosWrite.isBusy) {
+                GlassPillButton(title: "Charging",
+                                color: chargeColor,
+                                symbol: chargeSymbol,
+                                isWaiting: mosWrite.isWaiting(for: .charge),
+                                isBusy: mosWrite.isBusy) {
                     onChange(MOSChange(terminal: .charge,
                                        charge: !info.chargeMOSEnabled,
                                        discharge: info.dischargeMOSEnabled,
@@ -241,11 +193,11 @@ private struct ButtonBox: View {
                                        question: info.chargeMOSEnabled ? "Disable charging?" : "Enable charging?",
                                        confirmTitle: info.chargeMOSEnabled ? "Disable charging" : "Enable charging"))
                 }
-                MOSButton(title: "Discharging",
-                          color: dischargeColor,
-                          symbol: dischargeSymbol,
-                          isWaiting: mosWrite.isWaiting(for: .discharge),
-                          isBusy: mosWrite.isBusy) {
+                GlassPillButton(title: "Discharging",
+                                color: dischargeColor,
+                                symbol: dischargeSymbol,
+                                isWaiting: mosWrite.isWaiting(for: .discharge),
+                                isBusy: mosWrite.isBusy) {
                     onChange(MOSChange(terminal: .discharge,
                                        charge: info.chargeMOSEnabled,
                                        discharge: !info.dischargeMOSEnabled,
@@ -262,88 +214,46 @@ private struct ButtonBox: View {
     }
 }
 
-private struct MOSButton: View {
-    let title: String
-    let color: Color
-    let symbol: String
-    /// This button is the one waiting for the pack to confirm.
-    let isWaiting: Bool
-    /// Either button is waiting, so neither accepts a tap.
-    let isBusy: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            #if canImport(UIKit)
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            #endif
-            action()
-        } label: {
-            ZStack {
-                background
-                    // 44pt is Apple's minimum comfortable tap target; SBU's 35 was under it.
-                    .frame(width: 152, height: 44)
-                HStack {
-                    Text(title)
-                        .font(.system(size: 17))
-                    // A fixed slot sized to the bolt glyph, so swapping it for the
-                    // spinner neither shifts the label nor changes apparent size.
-                    ZStack {
-                        if isWaiting {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        } else {
-                            Image(systemName: symbol)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        }
-                    }
-                    .frame(width: 24, height: 24)
-                }
-                .foregroundColor(.white)
-            }
-        }
-        // Blocking hit testing rather than .disabled keeps the spinner at full
-        // strength while the button is unavailable.
-        .allowsHitTesting(!isBusy)
-        .opacity(isBusy && !isWaiting ? 0.55 : 1)
-        .animation(.easeInOut(duration: 0.2), value: isWaiting)
-        .animation(.easeInOut(duration: 0.2), value: isBusy)
-        .accessibilityLabel(title)
-        .accessibilityValue(isWaiting ? "Waiting for the BMS" : "")
-    }
-
-    /// Liquid Glass on iOS 26, tinted by the same colour the flat fallback uses, so
-    /// the on/off/gray/blue meaning survives either way.
-    @ViewBuilder
-    private var background: some View {
-        let shape = RoundedRectangle(cornerRadius: 22)
-        if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(.regular.tint(color), in: shape)
-        } else {
-            shape.fill(color)
-        }
-    }
-}
-
 // MARK: - Temperatures and cell extremes
 
-private struct CellTemperatureBox: View {
+/// Temperatures, the two ends of the cell string, the balancer and what is left to
+/// run — everything about the pack that is a figure rather than a control.
+///
+/// It began as the temperatures alone, which is what it used to be named after.
+private struct PackSummaryBox: View {
     let info: BasicInfo
     let summary: CellSummary?
+    /// The wire resistances, where the pack measures them, and which of the two
+    /// readouts the box below is showing. The two ends named here follow that choice:
+    /// ask for resistances and this names the worst and the best connection instead of
+    /// the weakest and the strongest cell.
+    var resistances: [Double] = []
+    var readout: CellReadout = .voltages
+    /// From the connection rather than from `info`: the estimate leans on the
+    /// readings that came before this one as much as on this one.
+    let remainingHours: Double?
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, value in
                     HStack(alignment: .top) {
-                        Image(systemName: "thermometer")
+                        Image(systemName: temperatureSymbol(index))
                             .frame(width: 20, height: 20, alignment: .center)
-                        CircleNumber(number: index + 1)
+                        // The pack's own name for the sensor rather than its position
+                        // in the list: on a JK pack the third one is the MOSFETs, not
+                        // a third probe in the cells, and numbering it "3" said
+                        // otherwise.
+                        CircleLabel(text: info.temperatureLabel(index))
                             .padding(.trailing, 4)
                         Text(info.temperatureText(value))
                             .monospacedDigit()
+                        // The same light the GPS screen puts beside the hottest
+                        // reading, here beside every one of them. The thermometer to
+                        // the left says which probe this is against the others; the
+                        // light says what the figure is worth on its own.
+                        IndicatorLight(tint: .packTemperature(value))
+                            .frame(height: 20)
                         Spacer()
                     }
                 }
@@ -357,32 +267,69 @@ private struct CellTemperatureBox: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
-                if let summary {
-                    HStack(alignment: .top) {
-                        Image(systemName: "battery.25")
-                            .frame(width: 20, height: 20, alignment: .center)
-                            .rotationEffect(.degrees(-90))
-                        CircleNumber(number: summary.lowestIndex + 1)
-                        Text(summary.lowest.formatted(decimals: 3, unit: "V")).monospacedDigit()
-                        Spacer()
-                    }
-                    HStack(alignment: .top) {
-                        Image(systemName: "battery.75")
-                            .frame(width: 20, height: 20, alignment: .center)
-                            .rotationEffect(.degrees(-90))
-                        CircleNumber(number: summary.highestIndex + 1)
-                        Text(summary.highest.formatted(decimals: 3, unit: "V")).monospacedDigit()
-                        Spacer()
-                    }
-                    HStack(alignment: .top) {
-                        Text("△")
-                            .frame(width: 20, height: 20, alignment: .center)
-                        Spacer(minLength: 8)
-                        Text(summary.deltaMillivolts.formatted(decimals: 0, unit: "mV")).monospacedDigit()
-                        Spacer()
-                    }
+                if let wiring = resistanceSummary {
+                    // The worst connection first, because that is the one worth doing
+                    // something about — the opposite way round from the voltages,
+                    // where the row that matters is the cell that is lagging.
+                    let spread = wiring.highest > wiring.lowest
+                    extremeRow(symbol: "bolt.horizontal.fill",
+                               rotates: false,
+                               cell: wiring.highestIndex,
+                               text: wiring.highest.formatted(decimals: 3, unit: "Ω"),
+                               tint: .red,
+                               spread: spread)
+                    extremeRow(symbol: "bolt.horizontal",
+                               rotates: false,
+                               cell: wiring.lowestIndex,
+                               text: wiring.lowest.formatted(decimals: 3, unit: "Ω"),
+                               tint: .green,
+                               spread: spread)
+                    deltaRow(text: wiring.deltaMillivolts.formatted(decimals: 0, unit: "mΩ"))
+                } else if let summary {
+                    // A pack whose cells all read the same has no weakest and no
+                    // strongest, so neither row claims one: the figure would be an
+                    // arbitrary cell out of however many are tied, and printing it
+                    // beside a battery icon says it is the low one when it is not.
+                    let spread = summary.highest > summary.lowest
+                    extremeRow(symbol: "battery.25",
+                               rotates: true,
+                               cell: summary.lowestIndex,
+                               text: summary.lowest.formatted(decimals: 3, unit: "V"),
+                               tint: .red,
+                               spread: spread)
+                    extremeRow(symbol: "battery.75",
+                               rotates: true,
+                               cell: summary.highestIndex,
+                               text: summary.highest.formatted(decimals: 3, unit: "V"),
+                               tint: .green,
+                               spread: spread)
+                    deltaRow(text: summary.deltaMillivolts.formatted(decimals: 0, unit: "mV"))
                 }
-                if info.current > 0, let remaining = info.remainingTimeText {
+                if info.isBalancing {
+                    HStack(alignment: .top) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .frame(width: 20, height: 20, alignment: .center)
+                            .foregroundStyle(Color.accentColor)
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(info.balancingText)
+                                .monospacedDigit()
+                            // The rate, on its own line, where the pack gives one
+                            // alongside the direction.
+                            if info.balancingFrom != nil, let rate = info.balanceCurrentText {
+                                Text(rate)
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                }
+                if info.current > 0, let remaining = remainingHours?.asRemainingTime {
                     HStack(alignment: .top) {
                         Image(systemName: "clock.badge.checkmark")
                             .frame(width: 20, height: 20, alignment: .center)
@@ -395,6 +342,7 @@ private struct CellTemperatureBox: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.leading, 4)
+            .animation(.easeInOut(duration: 0.3), value: info.isBalancing)
         }
         .padding(.horizontal)
         .padding(.top)
@@ -405,77 +353,82 @@ private struct CellTemperatureBox: View {
                 .fill(.ultraThinMaterial)
         }
     }
-}
 
-// MARK: - Per-cell voltages
+    /// The two ends of the readout on screen, when the pack measures it and the two
+    /// ends differ.
+    ///
+    /// Built from the resistances with the same code the voltages use — the figures
+    /// go in, the highest, the lowest and the spread come out, and nothing in there
+    /// is about volts. Answers `nil` whenever the voltages are what is showing, which
+    /// is what the row below falls back on.
+    private var resistanceSummary: CellSummary? {
+        guard readout == .resistances else { return nil }
+        return CellSummary(voltages: resistances)
+    }
 
-private struct CellVoltageBox: View {
-    let voltages: [Double]
-    let balancing: Set<Int>
-    let summary: CellSummary?
-    let emptyMillivolts: Double
-    let fullMillivolts: Double
-
-    var body: some View {
-        Card {
-            VStack(spacing: 8) {
-                ForEach(Array(voltages.enumerated()), id: \.offset) { index, voltage in
-                    if voltage > 0 {
-                        HStack(alignment: .center) {
-                            Image(systemName: symbol(for: index))
-                                .frame(width: 20, height: 20, alignment: .center)
-                                .rotationEffect(.degrees(-90))
-                            CircleNumber(number: index + 1)
-                                .padding(.trailing, 4)
-                            Text(voltage.formatted(decimals: 3, unit: "V"))
-                                .monospacedDigit()
-                            Spacer(minLength: 30)
-                            Image(systemName: "bolt.fill")
-                                .frame(width: 20, height: 20)
-                                .opacity(balancing.contains(index) ? 1 : 0)
-                                .animation(.easeIn(duration: 0.4), value: balancing.contains(index))
-                            Spacer()
-                            CellVoltageBar(fraction: fraction(for: voltage))
-                                .offset(y: 6)
-                        }
-                    }
-                }
-            }
+    /// One end of the string — or the fact that the pack does not have ends worth
+    /// naming, which is what a flat pack looks like.
+    ///
+    /// The row keeps its shape either way so the box does not change height as the
+    /// cells drift apart and back together; it is the dash, the greying and the word
+    /// that carry the difference.
+    @ViewBuilder
+    private func extremeRow(symbol: String,
+                            rotates: Bool,
+                            cell: Int,
+                            text: String,
+                            tint: Color,
+                            spread: Bool) -> some View {
+        HStack(alignment: .top) {
+            Image(systemName: symbol)
+                .frame(width: 20, height: 20, alignment: .center)
+                // The battery symbols read as a level, which means standing them on
+                // end. The bolts already point the way they mean.
+                .rotationEffect(.degrees(rotates ? -90 : 0))
+                .foregroundStyle(spread ? Color.primary : Color.secondary)
+            CircleLabel(text: spread ? "\(cell + 1)" : "–")
+                .opacity(spread ? 1 : 0.45)
+            Text(spread ? text : "none")
+                .monospacedDigit()
+                .foregroundStyle(spread ? tint : Color.secondary)
+            Spacer()
         }
     }
 
-    private func symbol(for index: Int) -> String {
-        guard let summary else { return "battery.50" }
-        if index == summary.lowestIndex { return "battery.25" }
-        if index == summary.highestIndex { return "battery.75" }
-        return "battery.50"
-    }
-
-    private func fraction(for voltage: Double) -> Double {
-        let span = fullMillivolts - emptyMillivolts
-        guard span > 0 else { return 0 }
-        return max(0, min((voltage * 1000 - emptyMillivolts) / span, 1))
-    }
-}
-
-private struct CellVoltageBar: View {
-    let fraction: Double
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .foregroundColor(Color.gray.opacity(0.3))
-                    .cornerRadius(10)
-                    .frame(height: 11)
-                Rectangle()
-                    .foregroundColor(Color.accentColor)
-                    .cornerRadius(10)
-                    .frame(width: geometry.size.width * fraction, height: 11)
-            }
+    /// How far apart those two ends are, in thousandths of whichever unit they are in.
+    private func deltaRow(text: String) -> some View {
+        HStack(alignment: .top) {
+            Text("△")
+                .frame(width: 20, height: 20, alignment: .center)
+            Spacer(minLength: 8)
+            Text(text).monospacedDigit()
+            Spacer()
         }
-        .frame(height: 11)
-        .animation(.easeInOut(duration: 0.4), value: fraction)
+    }
+
+    // MARK: - Which probe is running hot
+
+    /// The hottest and the coldest of the pack's own probes, when they differ.
+    ///
+    /// The MOSFET sensor is deliberately left out of the comparison. It measures the
+    /// switches rather than the cells and runs warmer than them nearly all the time,
+    /// so letting it into the comparison would hand it the hot thermometer every
+    /// round and leave the probes that actually differ looking identical.
+    private var probeExtremes: (hottest: Int, coldest: Int)? {
+        let probes = info.temperatures.indices.filter { info.temperatureLabel($0) != "MOS" }
+        guard probes.count > 1,
+              let hottest = probes.max(by: { info.temperatures[$0] < info.temperatures[$1] }),
+              let coldest = probes.min(by: { info.temperatures[$0] < info.temperatures[$1] }),
+              info.temperatures[hottest] > info.temperatures[coldest]
+        else { return nil }
+        return (hottest, coldest)
+    }
+
+    private func temperatureSymbol(_ index: Int) -> String {
+        guard let extremes = probeExtremes else { return "thermometer.medium" }
+        if index == extremes.hottest { return "thermometer.high" }
+        if index == extremes.coldest { return "thermometer.low" }
+        return "thermometer.medium"
     }
 }
 
@@ -483,6 +436,21 @@ private struct CellVoltageBar: View {
 
 private struct BatteryInfoBox: View {
     let info: BasicInfo
+    /// Whether to show the reset button at all, and whether it would accept a tap
+    /// right now. Two separate questions: the button has to stay on screen while the
+    /// reset it started is still running, which is exactly when it refuses taps.
+    let offersClearingAlerts: Bool
+    let canClearAlerts: Bool
+    /// Whether the pack has answered yet. The button is grey until it has, for the
+    /// same reason the MOSFET pair is: nothing in this box means anything before
+    /// the first frame lands.
+    let hasReading: Bool
+    let isClearingAlerts: Bool
+    let clearAlertsOutcome: BMSConnection.WriteOutcome
+    let onClearAlerts: () -> Void
+
+    @State private var confirmingClear = false
+    @State private var showingOutcome = false
 
     var body: some View {
         Card {
@@ -504,6 +472,33 @@ private struct BatteryInfoBox: View {
                         DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .none)
                     } ?? "—")
                 }
+                // Everything below here is shown only by the packs that report it,
+                // rather than as a row of dashes on the ones that do not.
+                if let health = info.stateOfHealth {
+                    HStack {
+                        Text("State of health")
+                        Spacer()
+                        Text("\(health) %").monospacedDigit()
+                    }
+                }
+                if let runtime = info.totalRuntime, runtime > 0 {
+                    HStack {
+                        Text("Total runtime")
+                        Spacer()
+                        Text(runtime.asRuntime).monospacedDigit()
+                    }
+                }
+                if let count = info.powerOnCount, count > 0 {
+                    HStack {
+                        Text("Power-on count")
+                        Spacer()
+                        Text("\(count)").monospacedDigit()
+                    }
+                }
+                // The model, the hardware revision and the serial number used to be
+                // here too. They are the one part of this box that never changes while
+                // the app is open, and a figure that never changes does not belong on
+                // the screen you watch — they live in the device's own settings now.
                 if !info.protections.isEmpty {
                     Divider()
                     ForEach(info.protections.sorted { $0.rawValue < $1.rawValue }) { protection in
@@ -515,7 +510,68 @@ private struct BatteryInfoBox: View {
                         }
                     }
                 }
+                if offersClearingAlerts {
+                    GlassPillButton(title: "Reset alerts",
+                                    color: hasReading ? .red : .gray,
+                                    symbol: "exclamationmark.triangle",
+                                    isWaiting: isClearingAlerts,
+                                    isBusy: !canClearAlerts,
+                                    size: .small) {
+                        confirmingClear = true
+                    }
+                    .padding(.top, 2)
+                    // The pill is drawn 36pt tall inside a 44pt tap target, so there
+                    // is a band of empty target under it before the card's own
+                    // padding even starts. Taking that back closes the gap the button
+                    // was floating in — but not when the outcome note follows it,
+                    // which needs the room.
+                    .padding(.bottom, showingOutcome ? 0 : -8)
+                    if showingOutcome {
+                        outcomeNote
+                    }
+                }
             }
         }
+        .confirmationDialog("⚠️ Reset the stored alerts?",
+                            isPresented: $confirmingClear,
+                            titleVisibility: .visible) {
+            Button("Reset alerts", role: .destructive, action: onClearAlerts)
+            Button("Cancel", role: .cancel) { confirmingClear = false }
+        } message: {
+            Text("This wipes the fault record the BMS keeps, and cannot be undone. A protection that is still tripped comes straight back on the next reading.")
+        }
+        // A refusal stays up — it is the only place it is explained. Success bows out
+        // on its own rather than sitting on a dashboard that is meant to be watched.
+        .task(id: clearAlertsOutcome) {
+            guard clearAlertsOutcome != .idle else {
+                showingOutcome = false
+                return
+            }
+            showingOutcome = true
+            guard clearAlertsOutcome == .succeeded else { return }
+            try? await Task.sleep(for: .seconds(4))
+            showingOutcome = false
+        }
+    }
+
+    /// The line under the button, once there is something to say about the last reset.
+    @ViewBuilder
+    private var outcomeNote: some View {
+        switch clearAlertsOutcome {
+        case .idle:
+            EmptyView()
+        case .succeeded:
+            note("The BMS cleared its stored alerts.", tint: .green)
+        case .rejected(let message):
+            note(message, tint: .red)
+        }
+    }
+
+    private func note(_ message: String, tint: Color) -> some View {
+        Text(message)
+            .font(.footnote)
+            .foregroundStyle(tint)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
     }
 }

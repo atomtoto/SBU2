@@ -27,9 +27,24 @@ enum JBD {
     /// Smallest possible frame: start + register + status + length + checksum + stop.
     static let overhead = 7
 
+    /// Where the register and the payload length sit in a frame.
+    static let registerIndex = 2
+    static let lengthIndex = 3
+
+    /// The framing `FrameAssembler` needs to cut JBD answers out of the byte stream.
+    static let frameLayout = FrameAssembler.Layout(startByte: startByte,
+                                                   stopByte: stopByte,
+                                                   overhead: overhead,
+                                                   lengthIndex: lengthIndex)
+
     enum Register: UInt8 {
         case basicInfo = 0x03
         case cellVoltages = 0x04
+        /// The pack's model string, in ASCII. An ordinary read like the two above —
+        /// no factory mode, no password. The name the manufacturer's own tooling
+        /// gives this register is "hardware version", but what comes back is the
+        /// model as it is printed on the label, so that is what it is called here.
+        case deviceModel = 0x05
         /// Enables factory ("read/write") mode. Needed before writing anything.
         case factoryModeOpen = 0x00
         /// Leaves factory mode and commits the changes.
@@ -78,6 +93,83 @@ enum JBD {
     static var closeFactoryMode: [UInt8] {
         writeRequest(.factoryModeClose, payload: [0x00, 0x00])
     }
+
+    /// Leaves factory mode *and commits the EEPROM*, which is the same thing as
+    /// wiping the fault records the pack keeps behind register `0xAA`.
+    ///
+    /// It is the same register as `closeFactoryMode` — only the payload differs, so
+    /// both answer on register `0x01` and nothing downstream can tell them apart by
+    /// register alone. An otherwise empty factory bracket ending here is how the
+    /// reference implementation clears the errors, and it is what the settings that
+    /// have to survive a power cycle end with.
+    static var saveAndCloseFactoryMode: [UInt8] {
+        writeRequest(.factoryModeClose, payload: [0x28, 0x28])
+    }
+
+    // MARK: - Calibration
+
+    /// The EEPROM registers a calibration writes to. Each takes one big-endian
+    /// 16-bit word, and the pack works out its own correction from the true figure
+    /// it is handed.
+    enum Calibration {
+        /// One register per cell, `0xB0` through `0xCF` — 32 of them. The word is
+        /// the cell's true voltage in millivolts.
+        static let cellBase: UInt8 = 0xB0
+        static let cellCount = 32
+        /// One register per NTC, `0xD0` through `0xD7`. The word is tenths of a
+        /// kelvin, the same scale the readings come back in.
+        static let temperatureBase: UInt8 = 0xD0
+        static let temperatureCount = 8
+        /// Zeroes the current reading; the word is always zero.
+        static let idleCurrent: UInt8 = 0xAD
+        /// Gain, one register per direction. The word is hundredths of an amp, the
+        /// scale the current reading uses.
+        static let chargeCurrent: UInt8 = 0xAE
+        static let dischargeCurrent: UInt8 = 0xAF
+    }
+
+    private static func word(_ value: UInt16) -> [UInt8] {
+        [UInt8(value >> 8), UInt8(value & 0x00FF)]
+    }
+
+    private static func calibrationWrite(register: UInt8, word value: UInt16) -> [UInt8] {
+        frame(direction: writeByte, register: register, payload: word(value))
+    }
+
+    /// Hands the pack the true voltage of one cell, in millivolts.
+    static func calibrateCell(index: Int, millivolts: Int) -> [UInt8]? {
+        guard (0..<Calibration.cellCount).contains(index),
+              let value = UInt16(exactly: millivolts)
+        else { return nil }
+        return calibrationWrite(register: Calibration.cellBase + UInt8(index), word: value)
+    }
+
+    /// Hands the pack the true temperature at one sensor.
+    static func calibrateTemperature(index: Int, celsius: Double) -> [UInt8]? {
+        guard (0..<Calibration.temperatureCount).contains(index) else { return nil }
+        let tenthsOfKelvin = ((celsius + 273.15) * 10).rounded()
+        guard let value = UInt16(exactly: tenthsOfKelvin) else { return nil }
+        return calibrationWrite(register: Calibration.temperatureBase + UInt8(index), word: value)
+    }
+
+    /// Tells the pack that what it is measuring right now is zero.
+    static var calibrateIdleCurrent: [UInt8] {
+        calibrationWrite(register: Calibration.idleCurrent, word: 0)
+    }
+
+    /// Hands the pack the true current flowing in the given direction, in amps.
+    ///
+    /// The magnitude is written whichever way the current runs: the register itself
+    /// says which direction is being calibrated, and a negative word risks being read
+    /// as a very large positive one by a firmware that treats it as unsigned.
+    static func calibrateCurrent(charging: Bool, amperes: Double) -> [UInt8]? {
+        let hundredths = (abs(amperes) * 100).rounded()
+        guard let value = UInt16(exactly: hundredths), value <= UInt16(Int16.max) else { return nil }
+        let register = charging ? Calibration.chargeCurrent : Calibration.dischargeCurrent
+        return calibrationWrite(register: register, word: value)
+    }
+
+    // MARK: - MOSFETs
 
     /// Bit 0 switches the charge MOSFET *off*, bit 1 the discharge MOSFET *off*.
     static func mosControl(charge: Bool, discharge: Bool) -> [UInt8] {
@@ -128,6 +220,18 @@ enum JBD {
 
     // MARK: - Responses
 
+    /// The model string out of a `deviceModel` answer.
+    ///
+    /// Some firmwares pad the field with zeros and some stop at the first one, so the
+    /// string ends wherever the text does. An answer that is empty, or that is not
+    /// text at all, comes back as `nil` rather than as an empty row on the screen.
+    static func deviceModel(payload: [UInt8]) -> String? {
+        let text = payload.prefix { $0 != 0 }
+        guard !text.isEmpty, let model = String(bytes: text, encoding: .ascii) else { return nil }
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     struct Response: Equatable {
         var register: UInt8
         var status: UInt8
@@ -152,7 +256,7 @@ enum JBD {
         guard bytes.count >= overhead else { throw DecodingError.tooShort }
         guard bytes.first == startByte, bytes.last == stopByte else { throw DecodingError.badFraming }
 
-        let length = Int(bytes[3])
+        let length = Int(bytes[lengthIndex])
         guard bytes.count == overhead + length else { throw DecodingError.lengthMismatch }
 
         let payload = Array(bytes[4..<(4 + length)])
