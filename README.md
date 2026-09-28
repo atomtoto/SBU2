@@ -1,6 +1,6 @@
 # SBU2
 
-Application iOS en SwiftUI pour lire et piloter un BMS **JBD** (aka Xiaoxiang) ou **JK** via son module Bluetooth LE.
+Applications iOS et watchOS en SwiftUI pour lire et piloter un BMS **JBD** (aka Xiaoxiang) ou **JK** via son module Bluetooth LE.
 
 Tout le code est neuf et repose
 uniquement sur SwiftUI, `Observation` et CoreBluetooth.
@@ -16,12 +16,17 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 - Températures des sondes NTC.
 - Protections actives (surtension, sous-tension, surintensité, court-circuit…).
 - Activation / coupure des MOSFET de charge et de décharge, avec confirmation.
+- Sur Apple Watch : connexion Bluetooth directe au BMS, lecture de l'état de
+  charge, tension, courant, puissance, cellules, températures et alertes, puis
+  commandes MOSFET avec confirmation. Aucun iPhone n'est requis à proximité.
 
 ## Prérequis
 
-- Xcode 16 ou ultérieur.
+- Xcode avec les SDK iOS et watchOS 26 ou ultérieurs.
 - iOS 26 minimum.
-- Un iPhone, iPad ou Mac **réel** : le simulateur n'expose pas de Bluetooth LE.
+- watchOS 26 minimum pour l'app Apple Watch.
+- Un iPhone, iPad, Mac ou une Apple Watch **réels** pour le Bluetooth LE : le
+  simulateur permet d'essayer l'appareil de démonstration, sans BMS réel.
 
 ## Compilation
 
@@ -37,6 +42,18 @@ Pour lancer les tests unitaires :
 ```sh
 xcodebuild test -scheme SBU2 -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
+
+Pour compiler l'app Apple Watch :
+
+```sh
+xcodebuild build -scheme SBU2Watch -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO
+```
+
+La cible `SBU2Watch` est intégrée à l'app iOS. Sur la montre, ouvrez SBU2,
+choisissez un BMS détecté, puis parcourez ses mesures. Les réglages enregistrés
+sur l'iPhone et ceux de la montre sont indépendants. La liaison directe est
+maintenue pendant la consultation de l'app ; watchOS peut suspendre l'app quand
+elle passe en arrière-plan. Il n'y a pas de complication sur le cadran.
 
 Le workflow `.github/workflows/ci.yml` fait la même chose sur un runner macOS
 à chaque poussée sur `main` ou sur une branche `claude/**` — un run par commit,
@@ -59,6 +76,7 @@ changements qui ne touchent pas au code.
 | `SBU2/Views/GPS/` | Cadrans et relevés de trajet, repris à l'identique de SBU. |
 | `SBU2/Views/Settings/` | Réglages appareil et application. |
 | `SBU2Tests/` | Tests du protocole et du décodage (Swift Testing). |
+| `SBU2Watch/` | Interface Apple Watch, utilisant directement le moteur Bluetooth et les modèles communs. |
 
 ## Plusieurs familles de BMS
 

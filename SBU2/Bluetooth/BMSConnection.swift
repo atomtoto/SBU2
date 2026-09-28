@@ -193,6 +193,8 @@ final class BMSConnection: NSObject {
 
     var supportsCalibration: Bool { adapter.supportsCalibration }
 
+    var supportsMOSControl: Bool { adapter.supportsMOSControl }
+
     func isValidPassword(_ password: String) -> Bool { adapter.isValidPassword(password) }
 
     // MARK: Internals
@@ -220,7 +222,9 @@ final class BMSConnection: NSObject {
     /// avoid interrupting an answer in progress and to notice a dead conversation.
     @ObservationIgnored private var lastNotificationAt: Date?
     @ObservationIgnored private var estimator = ChargeEstimator()
+    #if os(iOS)
     @ObservationIgnored private let chargeLiveActivity = ChargeLiveActivityController()
+    #endif
     @ObservationIgnored private var pollTimer: Timer?
     @ObservationIgnored private var sendTimer: Timer?
     @ObservationIgnored private var wantsConnection = false
@@ -321,7 +325,9 @@ final class BMSConnection: NSObject {
     // MARK: - Opening a device
 
     func open(_ device: DiscoveredBMS) {
+        #if os(iOS)
         Task { await chargeLiveActivity.endImmediately() }
+        #endif
         central.stopScan()
         lastError = nil
         passwordOutcome = .idle
@@ -368,7 +374,9 @@ final class BMSConnection: NSObject {
     }
 
     func close() {
+        #if os(iOS)
         Task { await chargeLiveActivity.endImmediately() }
+        #endif
         wantsConnection = false
         stopPolling()
         demo = nil
@@ -494,6 +502,7 @@ final class BMSConnection: NSObject {
     private func noteForEstimate(_ info: BasicInfo) {
         estimator.update(info, chemistry: settings.chemistry)
         remainingHours = estimator.remainingHours
+        #if os(iOS)
         let name: String
         if !settings.name.isEmpty {
             name = settings.name
@@ -516,6 +525,7 @@ final class BMSConnection: NSObject {
                                                  deviceName: name,
                                                  deviceSymbolName: symbolName)
         }
+        #endif
     }
 
     private func stepDemo() {
