@@ -6,26 +6,30 @@ struct WatchDetailsView: View {
     var body: some View {
         let info = connection.info
         List {
-            Section("Battery") {
-                LabeledContent("Capacity", value: info.residualCapacity.formatted(decimals: 1, unit: "Ah"))
-                LabeledContent("Cycles", value: "\(info.cycles)")
-                LabeledContent("Charge MOS", value: info.chargeMOSEnabled ? "On" : "Off")
-                LabeledContent("Discharge MOS", value: info.dischargeMOSEnabled ? "On" : "Off")
-            }
+            WatchReadingNotice()
 
-            if !info.temperatures.isEmpty {
-                Section("Temperatures") {
-                    ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, temperature in
-                        LabeledContent("Sensor \(info.temperatureLabel(index))", value: info.temperatureText(temperature))
+            if connection.hasReading {
+                Section("Battery") {
+                    LabeledContent("Capacity", value: info.residualCapacity.formatted(decimals: 1, unit: "Ah"))
+                    LabeledContent("Cycles", value: "\(info.cycles)")
+                    LabeledContent("Charge MOS", value: info.chargeMOSEnabled ? "On" : "Off")
+                    LabeledContent("Discharge MOS", value: info.dischargeMOSEnabled ? "On" : "Off")
+                }
+
+                if !info.temperatures.isEmpty {
+                    Section("Temperatures") {
+                        ForEach(Array(info.temperatures.enumerated()), id: \.offset) { index, temperature in
+                            LabeledContent("Sensor \(info.temperatureLabel(index))", value: info.temperatureText(temperature))
+                        }
                     }
                 }
-            }
 
-            if !info.protections.isEmpty {
-                Section("Active alerts") {
-                    ForEach(info.protections.sorted(by: { $0.rawValue < $1.rawValue })) { protection in
-                        Label(protection.label, systemImage: protection.symbol)
-                            .foregroundStyle(protection.tint)
+                if !info.protections.isEmpty {
+                    Section("Active alerts") {
+                        ForEach(info.protections.sorted(by: { $0.rawValue < $1.rawValue })) { protection in
+                            Label(protection.label, systemImage: protection.symbol)
+                                .foregroundStyle(protection.tint)
+                        }
                     }
                 }
             }

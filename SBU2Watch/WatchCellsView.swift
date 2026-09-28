@@ -5,7 +5,8 @@ struct WatchCellsView: View {
 
     var body: some View {
         List {
-            if connection.cellVoltages.isEmpty {
+            WatchReadingNotice()
+            if connection.hasReading && connection.cellVoltages.isEmpty {
                 ProgressView("Reading cells…")
             }
             if let summary = connection.cellSummary {

@@ -80,6 +80,9 @@ final class BMSConnection: NSObject {
     private static let stallTimeout: TimeInterval = 5.0
     /// Still nothing after that: the dongle is wedged and only a new link revives it.
     private static let relinkTimeout: TimeInterval = 12.0
+    /// A basic-information frame normally arrives once a second. After five seconds
+    /// without one, the figures and MOSFET states must no longer authorize a write.
+    static let readingStaleAfter: TimeInterval = 5.0
     /// How long a one-shot write waits for its answer before it is called a failure.
     /// Longer than `responseTimeout`, which only decides when the *next* command may
     /// go out: a bracket has several of those to get through first.
@@ -102,6 +105,9 @@ final class BMSConnection: NSObject {
     /// family that does not, which is what keeps the readout picker off their screen.
     private(set) var cellResistances: [Double] = []
     private(set) var lastUpdate: Date?
+    /// Only a basic-information frame proves that the pack state (including both
+    /// MOSFET flags) is current. Cell frames must not refresh this timestamp.
+    private(set) var lastBasicInfoAt: Date?
     private(set) var lastError: String?
     /// Hours until the pack is full, or empty on the way down. Recomputed as each
     /// reading lands rather than derived on demand, because the estimate depends on
@@ -194,6 +200,17 @@ final class BMSConnection: NSObject {
     var supportsCalibration: Bool { adapter.supportsCalibration }
 
     var supportsMOSControl: Bool { adapter.supportsMOSControl }
+
+    static func readingIsFresh(lastBasicInfoAt: Date?, now: Date) -> Bool {
+        guard let lastBasicInfoAt else { return false }
+        let age = now.timeIntervalSince(lastBasicInfoAt)
+        return age >= 0 && age <= readingStaleAfter
+    }
+
+    func hasFreshReading(at now: Date = .now) -> Bool {
+        (status.isConnected || isDemoOpen) && hasReading
+            && Self.readingIsFresh(lastBasicInfoAt: lastBasicInfoAt, now: now)
+    }
 
     func isValidPassword(_ password: String) -> Bool { adapter.isValidPassword(password) }
 
@@ -307,8 +324,14 @@ final class BMSConnection: NSObject {
     func startScanning() {
         discovered.removeAll { !$0.isDemo }
         refreshDemoEntry()
+        switch central.state {
+        case .poweredOn: status = .scanning
+        case .poweredOff: status = .bluetoothOff
+        case .unauthorized: status = .unauthorized
+        case .unsupported: status = .unsupported
+        default: status = .idle
+        }
         guard central.state == .poweredOn else { return }
-        status = .scanning
         // Deliberately unfiltered. A service filter only ever sees a peripheral that
         // puts that service in its advertisement, and plenty of BMS modules advertise
         // nothing but their name — those were invisible, not merely unrecognised.
@@ -404,6 +427,7 @@ final class BMSConnection: NSObject {
         cellVoltages = []
         cellResistances = []
         lastUpdate = nil
+        lastBasicInfoAt = nil
         estimator.forget()
         remainingHours = nil
         mosWrite.cancel()
@@ -540,6 +564,7 @@ final class BMSConnection: NSObject {
         cellVoltages = demo?.cellVoltages ?? []
         cellResistances = demo?.cellResistances ?? []
         lastUpdate = .now
+        lastBasicInfoAt = lastUpdate
         noteForEstimate(info)
         // The demo pack never answers a command, so reconcile the tracker here too.
         mosWrite.reconcile(chargeEnabled: info.chargeMOSEnabled,
@@ -621,7 +646,7 @@ final class BMSConnection: NSObject {
     /// before one arrives that field is zero, and a tap meant to enable charging
     /// would quietly command the discharge terminal off along with it.
     var canControlMOS: Bool {
-        status.isConnected && hasReading && adapter.supportsMOSControl && !isWriting
+        hasFreshReading() && adapter.supportsMOSControl && !isWriting
     }
 
     /// Whether a bracket is still queued or unanswered.
@@ -827,6 +852,7 @@ final class BMSConnection: NSObject {
             }
             hasReading = true
             lastUpdate = .now
+            lastBasicInfoAt = lastUpdate
             noteForEstimate(decoded)
             mosWrite.reconcile(chargeEnabled: decoded.chargeMOSEnabled,
                                dischargeEnabled: decoded.dischargeMOSEnabled)
@@ -874,6 +900,9 @@ final class BMSConnection: NSObject {
 extension BMSConnection: CBCentralManagerDelegate {
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        // The simulated pack has no Bluetooth connection to lose. A delayed radio
+        // state callback must not replace its connected state or restart scanning.
+        guard demo == nil else { return }
         switch central.state {
         case .poweredOn:
             status = .idle

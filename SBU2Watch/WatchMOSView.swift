@@ -5,18 +5,32 @@ struct WatchMOSView: View {
     @State private var pendingConfirmation: MOSWriteTracker.Terminal?
 
     var body: some View {
-        List {
-            Section {
-                terminalRow(.charge, title: "Charging", enabled: connection.info.chargeMOSEnabled)
-                terminalRow(.discharge, title: "Discharging", enabled: connection.info.dischargeMOSEnabled)
-            } footer: {
-                Text("Changes are sent directly to the BMS.")
-            }
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let isFresh = connection.hasFreshReading()
+            List {
+                WatchReadingNotice()
+                if connection.hasReading {
+                    Section {
+                        terminalRow(.charge,
+                                    title: "Charging",
+                                    enabled: connection.info.chargeMOSEnabled,
+                                    isFresh: isFresh)
+                        terminalRow(.discharge,
+                                    title: "Discharging",
+                                    enabled: connection.info.dischargeMOSEnabled,
+                                    isFresh: isFresh)
+                    } footer: {
+                        Text(isFresh
+                             ? "Changes are sent directly to the BMS."
+                             : "Controls return when a new reading arrives.")
+                    }
+                }
 
-            if let error = connection.lastError {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
+                if let error = connection.lastError {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .navigationTitle("MOSFETs")
@@ -34,7 +48,7 @@ struct WatchMOSView: View {
     }
 
     private func terminalRow(_ terminal: MOSWriteTracker.Terminal,
-                             title: String, enabled: Bool) -> some View {
+                             title: String, enabled: Bool, isFresh: Bool) -> some View {
         Button {
             pendingConfirmation = terminal
         } label: {
@@ -53,7 +67,7 @@ struct WatchMOSView: View {
                 }
             }
         }
-        .disabled(!connection.canControlMOS || connection.mosWrite.isBusy)
+        .disabled(!isFresh || !connection.canControlMOS || connection.mosWrite.isBusy)
     }
 
     private var isDisabling: Bool {

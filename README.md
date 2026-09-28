@@ -19,6 +19,8 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 - Sur Apple Watch : connexion Bluetooth directe au BMS, lecture de l'état de
   charge, tension, courant, puissance, cellules, températures et alertes, puis
   commandes MOSFET avec confirmation. Aucun iPhone n'est requis à proximité.
+  Les mesures de plus de cinq secondes sont signalées comme périmées et les
+  commandes MOSFET sont alors désactivées jusqu'à la prochaine mesure valide.
 
 ## Prérequis
 
