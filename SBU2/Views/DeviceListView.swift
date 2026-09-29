@@ -24,7 +24,7 @@ struct DeviceListView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let message = unavailableMessage {
+                if let message = unavailableMessage, connection.discovered.isEmpty {
                     ContentUnavailableView("Bluetooth unavailable",
                                            systemImage: "antenna.radiowaves.left.and.right.slash",
                                            description: Text(message))

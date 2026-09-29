@@ -3,6 +3,7 @@
 //  SBU2
 //
 
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
 import Foundation
 
@@ -135,3 +136,4 @@ actor ChargeLiveActivityController {
         return now.timeIntervalSince(lastPublishedAt) >= Self.minimumUpdateInterval
     }
 }
+#endif

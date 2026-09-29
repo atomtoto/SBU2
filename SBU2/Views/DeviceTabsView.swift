@@ -40,6 +40,7 @@ struct DeviceTabsView: View {
                 .tag(DeviceTab.more)
         }
         .toolbar {
+            #if !targetEnvironment(macCatalyst)
             if selectedTab == .gps && isLandscape {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -56,6 +57,7 @@ struct DeviceTabsView: View {
                                         : "Enter full screen")
                 }
             }
+            #endif
         }
         .onGeometryChange(for: Bool.self) { proxy in
             proxy.size.width > proxy.size.height

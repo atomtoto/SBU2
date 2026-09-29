@@ -153,7 +153,7 @@ struct DeviceIconPicker: View {
 
     private var emojiCatalogue: some View {
         VStack(alignment: .leading, spacing: 14) {
-            #if canImport(UIKit)
+            #if canImport(UIKit) && !targetEnvironment(macCatalyst)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Type or draw one")
                     .font(.footnote.weight(.semibold))

@@ -153,6 +153,7 @@ struct DeviceSettingsView: View {
                      : "Removes everything the app remembers about this device — its name, icon, auto-connect and every customised setting. Nothing on the pack itself is changed, and it can be connected again at any time.")
             }
         }
+        .centeredMacForm()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(connection.isDemoOpen
@@ -288,11 +289,12 @@ struct DialsSettingsView: View {
                 }
                 .pickerStyle(.segmented)
             } header: {
-                Text("Landscape")
+                Text("Wide layout")
             } footer: {
-                Text("Split places the dials vertically on the left and the trip figures on the right.")
+                Text("When the window is wide enough, Split places the dials on the left and the trip figures on the right.")
             }
         }
+        .centeredMacForm()
         .navigationTitle("Dials")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -320,7 +322,11 @@ struct OverviewSettingsView: View {
             } header: {
                 Text("Style")
             } footer: {
+                #if targetEnvironment(macCatalyst)
+                Text("Right-click either box in Overview to change it from there. The cell style starts as bars, or as figures alone on a pack of more than twenty cells, the first time the pack is read.")
+                #else
                 Text("Long-press either box in the overview to change it from there. The cell style starts as bars, or as figures alone on a pack of more than twenty cells, the first time the pack is read.")
+                #endif
             }
 
             Section {
@@ -334,6 +340,7 @@ struct OverviewSettingsView: View {
                      : "Enable Charge Limit in the device settings first.")
             }
         }
+        .centeredMacForm()
         .navigationTitle("Overview")
         .navigationBarTitleDisplayMode(.inline)
     }

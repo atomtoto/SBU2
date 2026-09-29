@@ -20,65 +20,31 @@ struct OverviewView: View {
     @State private var readout: CellReadout = .voltages
 
     var body: some View {
-        @Bindable var connection = connection
+        GeometryReader { geometry in
+            let wide = geometry.size.width >= 900
 
-        ScrollView {
-            LazyVStack(spacing: 10) {
-                DetailBox(info: connection.info,
-                          capacityUnit: appSettings.capacityUnit,
-                          settings: $connection.settings)
-                    .padding(.top, 5)
-                ButtonBox(info: connection.info,
-                          settings: connection.settings,
-                          enabled: connection.canControlMOS,
-                          hasReading: connection.hasReading,
-                          mosWrite: connection.mosWrite) { change in
-                    if appSettings.showMOSFETWarning {
-                        confirmation = change
+            ScrollView {
+                Group {
+                    if wide {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(spacing: 10) { controls }
+                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 10) { readings }
+                                .frame(maxWidth: .infinity)
+                        }
                     } else {
-                        connection.setMOS(terminal: change.terminal,
-                                          charge: change.charge,
-                                          discharge: change.discharge)
-                    }
-                }
-                if showChargeBox {
-                    ChargeBox(settings: $connection.settings)
-                }
-                PackSummaryBox(info: connection.info,
-                               summary: connection.cellSummary,
-                               resistances: connection.cellResistances,
-                               readout: readout,
-                               remainingHours: connection.remainingHours)
-                if !connection.cellVoltages.isEmpty {
-                    CellVoltageBox(voltages: connection.cellVoltages,
-                                   resistances: connection.cellResistances,
-                                   balancing: connection.info.balancingCells,
-                                   summary: connection.cellSummary,
-                                   settings: $connection.settings,
-                                   highContrastFigures: appSettings.highContrastFigures,
-                                   readout: $readout)
-                }
-                BatteryInfoBox(info: connection.info,
-                               offersClearingAlerts: connection.offersClearingAlerts,
-                               canClearAlerts: connection.canClearAlerts,
-                               hasReading: connection.hasReading,
-                               isClearingAlerts: connection.isClearingAlerts,
-                               clearAlertsOutcome: connection.clearAlertsOutcome) {
-                    connection.clearAlerts()
-                }
-                if let error = connection.lastError {
-                    Card {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.yellow)
-                            Text(error)
-                            Spacer(minLength: 0)
+                        VStack(spacing: 10) {
+                            controls
+                            readings
                         }
                     }
                 }
-                Spacer()
+                .frame(maxWidth: wide ? 1120 : 680)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.top, 5)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, 10)
         }
         .confirmationDialog(confirmation?.question ?? "",
                             isPresented: Binding(get: { confirmation != nil },
@@ -104,6 +70,69 @@ struct OverviewView: View {
         // there any more.
         .onChange(of: connection.cellResistances.isEmpty) { _, gone in
             if gone { readout = .voltages }
+        }
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        @Bindable var connection = connection
+
+        DetailBox(info: connection.info,
+                  capacityUnit: appSettings.capacityUnit,
+                  settings: $connection.settings)
+        ButtonBox(info: connection.info,
+                  settings: connection.settings,
+                  enabled: connection.canControlMOS,
+                  hasReading: connection.hasReading,
+                  mosWrite: connection.mosWrite) { change in
+            if appSettings.showMOSFETWarning {
+                confirmation = change
+            } else {
+                connection.setMOS(terminal: change.terminal,
+                                  charge: change.charge,
+                                  discharge: change.discharge)
+            }
+        }
+        if showChargeBox {
+            ChargeBox(settings: $connection.settings)
+        }
+    }
+
+    @ViewBuilder
+    private var readings: some View {
+        @Bindable var connection = connection
+
+        PackSummaryBox(info: connection.info,
+                       summary: connection.cellSummary,
+                       resistances: connection.cellResistances,
+                       readout: readout,
+                       remainingHours: connection.remainingHours)
+        if !connection.cellVoltages.isEmpty {
+            CellVoltageBox(voltages: connection.cellVoltages,
+                           resistances: connection.cellResistances,
+                           balancing: connection.info.balancingCells,
+                           summary: connection.cellSummary,
+                           settings: $connection.settings,
+                           highContrastFigures: appSettings.highContrastFigures,
+                           readout: $readout)
+        }
+        BatteryInfoBox(info: connection.info,
+                       offersClearingAlerts: connection.offersClearingAlerts,
+                       canClearAlerts: connection.canClearAlerts,
+                       hasReading: connection.hasReading,
+                       isClearingAlerts: connection.isClearingAlerts,
+                       clearAlertsOutcome: connection.clearAlertsOutcome) {
+            connection.clearAlerts()
+        }
+        if let error = connection.lastError {
+            Card {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.yellow)
+                    Text(error)
+                    Spacer(minLength: 0)
+                }
+            }
         }
     }
 

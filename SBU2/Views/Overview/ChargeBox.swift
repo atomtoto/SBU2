@@ -151,7 +151,7 @@ struct ChargeBox: View {
     }
 
     private func impact() {
-        #if canImport(UIKit)
+        #if canImport(UIKit) && !targetEnvironment(macCatalyst)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         #endif
     }

@@ -26,12 +26,12 @@ extension View {
 }
 
 private struct DismissableKeyboard: ViewModifier {
-    #if canImport(UIKit)
+    #if canImport(UIKit) && !targetEnvironment(macCatalyst)
     @State private var assistant = KeyboardAssistant()
     #endif
 
     func body(content: Content) -> some View {
-        #if canImport(UIKit)
+        #if canImport(UIKit) && !targetEnvironment(macCatalyst)
         content
             // Set once here rather than on each form: it travels down the environment,
             // so every list and form below dismisses on a drag.
@@ -44,7 +44,7 @@ private struct DismissableKeyboard: ViewModifier {
     }
 }
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !targetEnvironment(macCatalyst)
 
 /// Watches for editing to begin anywhere in the app, and makes sure there is a way out
 /// of it.

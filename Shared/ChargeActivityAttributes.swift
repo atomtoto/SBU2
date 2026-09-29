@@ -3,6 +3,7 @@
 //  SBU2
 //
 
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
 import Foundation
 
@@ -24,3 +25,4 @@ struct ChargeActivityAttributes: ActivityAttributes {
     /// rendering data reliably; those presentations keep the charging bolt.
     let deviceSymbolName: String?
 }
+#endif

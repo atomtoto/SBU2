@@ -78,6 +78,7 @@ struct PasswordSettingsView: View {
                 EmptyView()
             }
         }
+        .centeredMacForm()
         .navigationTitle("Password")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { normalisePassword(&connection.settings) }

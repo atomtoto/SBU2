@@ -11,7 +11,7 @@ import UIKit
 /// `UIDevice.current.orientation` reports the device's physical attitude, which
 /// reads `.faceUp`, `.faceDown` or `.unknown` — none of them portrait or landscape —
 /// whenever the phone is lying flat, exactly the position it's often in once
-/// mounted. Reading `UIWindowScene.interfaceOrientation` instead always reflects
+/// mounted. Reading the scene's effective interface orientation instead reflects
 /// what is actually on screen.
 @Observable
 final class InterfaceOrientationObserver {
@@ -46,6 +46,6 @@ final class InterfaceOrientationObserver {
         guard let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
         else { return }
-        isPortrait = scene.interfaceOrientation.isPortrait
+        isPortrait = scene.effectiveGeometry.interfaceOrientation.isPortrait
     }
 }

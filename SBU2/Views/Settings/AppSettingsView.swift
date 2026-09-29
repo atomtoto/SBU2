@@ -34,6 +34,7 @@ struct AppSettingsView: View {
                 Text("This changes the display of the remaining capacity in Overview. kWh are estimated from the pack's nominal voltage: its series cell count times the nominal cell voltage set for the device.")
             }
 
+            #if !targetEnvironment(macCatalyst)
             Section {
                 Toggle("Disable automatic standby", isOn: $settings.keepScreenAwake)
             } header: {
@@ -41,6 +42,7 @@ struct AppSettingsView: View {
             } footer: {
                 Text("Keeps the screen awake while the app is in the foreground.")
             }
+            #endif
 
             Section {
                 Toggle("Confirm before switching MOSFETs", isOn: $settings.showMOSFETWarning)
@@ -73,6 +75,7 @@ struct AppSettingsView: View {
                 LabeledContent("Version", value: AppSettings.versionString)
             }
         }
+        .centeredMacForm()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -122,12 +125,21 @@ struct AboutView: View {
             }
 
             Section {
+                #if targetEnvironment(macCatalyst)
+                tip("Right-click the top box or the cell voltages in Overview to change how they are drawn.",
+                    systemImage: "cursorarrow.click")
+                tip("Right-click a pack on the home screen to give it a symbol or emoji.",
+                    systemImage: "face.smiling")
+                tip("Widen the GPS window to give three dials more room.",
+                    systemImage: "macwindow")
+                #else
                 tip("Long-press the top box or the cell voltages in Overview to change how they are drawn.",
                     systemImage: "hand.tap")
                 tip("Long-press a pack on the home screen to give it a symbol, an emoji or a Genmoji.",
                     systemImage: "face.smiling")
                 tip("Turn the phone sideways on the GPS screen: three dials fit better in landscape.",
                     systemImage: "iphone.landscape")
+                #endif
             } header: {
                 Text("Things that are easy to miss")
             }
@@ -146,6 +158,7 @@ struct AboutView: View {
                     .foregroundStyle(.orange)
             }
         }
+        .centeredMacForm()
         .navigationTitle("About this app")
         .navigationBarTitleDisplayMode(.inline)
     }

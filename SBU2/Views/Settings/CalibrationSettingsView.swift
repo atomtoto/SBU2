@@ -139,6 +139,7 @@ struct CalibrationSettingsView: View {
                 EmptyView()
             }
         }
+        .centeredMacForm()
         .navigationTitle("Calibration")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(confirming.map(title(for:)) ?? "",

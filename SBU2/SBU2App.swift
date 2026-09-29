@@ -8,7 +8,7 @@ import UIKit
 
 @main
 struct SBU2App: App {
-    /// Only there to answer the orientation question: portrait everywhere but GPS.
+    /// Only there to answer the iPhone orientation question.
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @State private var connection = BMSConnection()
@@ -21,7 +21,9 @@ struct SBU2App: App {
                 .environment(appSettings)
                 .preferredColorScheme(colorScheme)
                 .onChange(of: appSettings.keepScreenAwake, initial: true) { _, keepAwake in
+                    #if !targetEnvironment(macCatalyst)
                     UIApplication.shared.isIdleTimerDisabled = keepAwake
+                    #endif
                 }
                 .onChange(of: appSettings.snapshot) { _, _ in
                     appSettings.persist()

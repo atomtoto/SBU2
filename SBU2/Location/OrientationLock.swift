@@ -6,27 +6,38 @@
 import SwiftUI
 import UIKit
 
-/// SBU pinned the app to portrait and unlocked rotation only on the GPS tab, so the
-/// dials could be read in landscape. This keeps that behaviour.
+/// Keep the iPhone portrait-first behaviour, while letting iPad windows rotate on
+/// every tab. On iPad the available window width, not the device orientation,
+/// determines whether a dashboard has room for multiple columns.
 final class OrientationLock {
     static let shared = OrientationLock()
 
-    private(set) var mask: UIInterfaceOrientationMask = .portrait
+    private(set) var mask: UIInterfaceOrientationMask = OrientationLock.defaultMask
+
+    private static var defaultMask: UIInterfaceOrientationMask {
+        #if targetEnvironment(macCatalyst)
+        .all
+        #else
+        UIDevice.current.userInterfaceIdiom == .pad ? .all : .portrait
+        #endif
+    }
 
     private init() {}
 
     func allowAllOrientations() { apply(.all) }
 
-    func lockToPortrait() { apply(.portrait) }
+    func lockToPortrait() { apply(Self.defaultMask) }
 
     private func apply(_ mask: UIInterfaceOrientationMask) {
         guard self.mask != mask else { return }
         self.mask = mask
+        #if !targetEnvironment(macCatalyst)
         guard let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
         else { return }
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask))
         scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        #endif
     }
 }
 

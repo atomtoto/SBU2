@@ -47,7 +47,7 @@ struct GlassPillButton: View {
 
     var body: some View {
         Button {
-            #if canImport(UIKit)
+            #if canImport(UIKit) && !targetEnvironment(macCatalyst)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             #endif
             action()

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct GPSView: View {
     @Environment(BMSConnection.self) private var connection
@@ -13,6 +14,7 @@ struct GPSView: View {
     @State private var recorder = TripRecorder()
     @State private var showingDialSettings = false
     @State private var isLandscape = false
+    @State private var availableWidth: CGFloat = 0
 
     /// The rotate hint only earns its place once all three dials are competing for
     /// the same row — with one or two, portrait already has the room.
@@ -23,16 +25,18 @@ struct GPSView: View {
             && connection.settings.speedDialStyle == .ring
     }
 
-    private var usesSplitLandscape: Bool {
-        isLandscape && connection.settings.gpsLandscapeLayout == .split
+    private var usesSplitLayout: Bool {
+        availableWidth >= 850 && connection.settings.gpsLandscapeLayout == .split
     }
+
+    private var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
     var body: some View {
         @Bindable var connection = connection
 
         ScrollView {
             Group {
-                if usesSplitLandscape {
+                if usesSplitLayout {
                     GPSLandscapeColumns(
                         dialsFraction: connection.settings.showSpeedDial
                             && connection.settings.speedDialStyle == .radio ? 0.5 : 0.38,
@@ -70,9 +74,11 @@ struct GPSView: View {
                             showingDialSettings = true
                         }
 
-                        if allDialsShown && !isLandscape {
-                            HintBanner(symbol: "iphone.landscape",
-                                       message: "Rotate your phone: three dials fit better in landscape.")
+                        if allDialsShown && availableWidth < 700 && (!isPhone || !isLandscape) {
+                            HintBanner(symbol: isPhone ? "iphone.landscape" : "macwindow",
+                                       message: isPhone
+                                           ? "Rotate your phone: three dials fit better in landscape."
+                                           : "Widen the window to give three dials more room.")
                         }
 
                         GPSListView(settings: connection.settings,
@@ -86,23 +92,39 @@ struct GPSView: View {
                     }
                 }
             }
+            .frame(maxWidth: usesSplitLayout ? 1180 : 760)
+            .frame(maxWidth: .infinity)
             .padding(.top, 15)
             .padding(.bottom, 20)
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .padding(.horizontal, 3)
         .safeAreaBar(edge: .bottom, spacing: 0) {
+            #if !targetEnvironment(macCatalyst)
             if !isLandscapeFullscreen {
                 ResetFooter {
                     recorder.reset()
                 }
             }
+            #endif
+        }
+        .toolbar {
+            #if targetEnvironment(macCatalyst)
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    recorder.reset()
+                } label: {
+                    Label("Reset trip", systemImage: "arrow.counterclockwise")
+                }
+            }
+            #endif
         }
         .toolbarVisibility(isLandscapeFullscreen ? .hidden : .visible, for: .tabBar)
-        .onGeometryChange(for: Bool.self) { proxy in
-            proxy.size.width > proxy.size.height
-        } action: { landscape in
-            isLandscape = landscape
+        .onGeometryChange(for: CGSize.self) { proxy in
+            proxy.size
+        } action: { size in
+            availableWidth = size.width
+            isLandscape = size.width > size.height
         }
         .onAppear {
             OrientationLock.shared.allowAllOrientations()
@@ -138,6 +160,7 @@ private struct ResetFooter: View {
         GlassPillButton(title: "Reset", color: .red, symbol: "minus.circle", action: action)
             .padding(.top, 8)
             .padding(.bottom, 6)
+            .frame(maxWidth: 760)
             .frame(maxWidth: .infinity)
     }
 }

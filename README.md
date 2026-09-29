@@ -1,6 +1,6 @@
 # SBU2
 
-Applications iOS et watchOS en SwiftUI pour lire et piloter un BMS **JBD** (aka Xiaoxiang) ou **JK** via son module Bluetooth LE.
+Applications iOS, macOS (Mac Catalyst) et watchOS en SwiftUI pour lire et piloter un BMS **JBD** (aka Xiaoxiang) ou **JK** via son module Bluetooth LE.
 
 Tout le code est neuf et repose
 uniquement sur SwiftUI, `Observation` et CoreBluetooth.
@@ -24,8 +24,9 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 
 ## Prérequis
 
-- Xcode avec les SDK iOS et watchOS 26 ou ultérieurs.
+- Xcode avec les SDK iOS, macOS et watchOS 26 ou ultérieurs.
 - iOS 26 minimum.
+- macOS 26 minimum pour la version Mac Catalyst.
 - watchOS 26 minimum pour l'app Apple Watch.
 - Un iPhone, iPad, Mac ou une Apple Watch **réels** pour le Bluetooth LE : le
   simulateur permet d'essayer l'appareil de démonstration, sans BMS réel.
@@ -50,6 +51,17 @@ Pour compiler l'app Apple Watch :
 ```sh
 xcodebuild build -scheme SBU2Watch -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO
 ```
+
+La même cible `SBU2` produit aussi l'app Mac Catalyst, avec une interface qui
+s'adapte à la largeur de la fenêtre :
+
+```sh
+xcodebuild build -scheme SBU2 -destination 'generic/platform=macOS,variant=Mac Catalyst' CODE_SIGNING_ALLOWED=NO
+```
+
+Sur Mac, les menus contextuels s'ouvrent au clic droit et la remise à zéro du
+trajet GPS se trouve dans la barre d'outils. Les activités de charge et l'app
+Apple Watch restent propres à la version iOS.
 
 La cible `SBU2Watch` est intégrée à l'app iOS. Sur la montre, ouvrez SBU2,
 choisissez un BMS détecté, puis parcourez ses mesures. Les réglages enregistrés
