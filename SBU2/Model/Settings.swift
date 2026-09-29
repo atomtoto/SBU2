@@ -373,6 +373,7 @@ struct DeviceSettings: Codable, Equatable {
         set { storedRadioSpeedIndicatorStyle = newValue }
     }
 
+    /// The stored name predates window resizing; iPhone portrait always uses Stacked.
     var gpsLandscapeLayout: GPSLandscapeLayout {
         get { storedGPSLandscapeLayout ?? .stacked }
         set { storedGPSLandscapeLayout = newValue }

@@ -289,9 +289,9 @@ struct DialsSettingsView: View {
                 }
                 .pickerStyle(.segmented)
             } header: {
-                Text("Wide layout")
+                Text("Layout")
             } footer: {
-                Text("When the window is wide enough, Split places the dials on the left and the trip figures on the right.")
+                Text("On iPhone in portrait, the layout is always Stacked. Otherwise, Split keeps the dials beside the trip figures; scroll sideways in a narrow window to see both columns.")
             }
         }
         .centeredMacForm()

@@ -26,8 +26,12 @@ struct GPSView: View {
     }
 
     private var usesSplitLayout: Bool {
-        availableWidth >= 850 && connection.settings.gpsLandscapeLayout == .split
+        connection.settings.gpsLandscapeLayout == .split && (!isPhone || isLandscape)
     }
+
+    /// Keep both columns readable when Split is selected in a narrow window.
+    /// Horizontal scrolling preserves the user's layout choice.
+    private var splitWidth: CGFloat { max(740, min(availableWidth - 6, 1180)) }
 
     private var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
@@ -37,30 +41,40 @@ struct GPSView: View {
         ScrollView {
             Group {
                 if usesSplitLayout {
-                    GPSLandscapeColumns(
-                        dialsFraction: connection.settings.showSpeedDial
-                            && connection.settings.speedDialStyle == .radio ? 0.5 : 0.38,
-                        spacing: 10
-                    ) {
-                        DialsView(settings: connection.settings,
-                                  info: connection.info,
-                                  recorder: recorder,
-                                  vertical: true) {
-                            showingDialSettings = true
+                    VStack(spacing: 10) {
+                        if availableWidth < 746 {
+                            HintBanner(symbol: "arrow.left.and.right",
+                                       message: "Scroll sideways to see the trip figures.")
                         }
-                        .frame(maxWidth: .infinity)
+                        ScrollView(.horizontal) {
+                            GPSSplitColumns(
+                                dialsFraction: connection.settings.showSpeedDial
+                                    && connection.settings.speedDialStyle == .radio ? 0.5 : 0.38,
+                                spacing: 10
+                            ) {
+                                DialsView(settings: connection.settings,
+                                          info: connection.info,
+                                          recorder: recorder,
+                                          vertical: true) {
+                                    showingDialSettings = true
+                                }
+                                .frame(maxWidth: .infinity)
 
-                        VStack(spacing: 10) {
-                            GPSListView(settings: connection.settings,
-                                        info: connection.info,
-                                        recorder: recorder)
+                                VStack(spacing: 10) {
+                                    GPSListView(settings: connection.settings,
+                                                info: connection.info,
+                                                recorder: recorder)
 
-                            if recorder.authorizationDenied {
-                                HintBanner(symbol: "location.slash",
-                                           message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                                    if recorder.authorizationDenied {
+                                        HintBanner(symbol: "location.slash",
+                                                   message: "Location access is off. Enable it in Settings to measure speed, distance and range.")
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
                             }
+                            .frame(width: splitWidth)
                         }
-                        .frame(maxWidth: .infinity)
+                        .scrollIndicators(.visible)
                     }
                 } else {
                     // One stack at the same 10pt the overview stacks its boxes at,
@@ -167,7 +181,7 @@ private struct ResetFooter: View {
 
 /// The radio tuner benefits from equal columns, while circular dials have a capped
 /// diameter and give their unused width to the figures list instead.
-private struct GPSLandscapeColumns: Layout {
+private struct GPSSplitColumns: Layout {
     let dialsFraction: CGFloat
     let spacing: CGFloat
 
