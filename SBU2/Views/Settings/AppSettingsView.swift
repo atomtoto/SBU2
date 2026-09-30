@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// App-wide preferences, reached from the gear on the device list.
+/// App-wide preferences, shown in a Mac tab or from the iOS gear.
 struct AppSettingsView: View {
     @Environment(AppSettings.self) private var settings
 

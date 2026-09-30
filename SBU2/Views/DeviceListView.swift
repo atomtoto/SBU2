@@ -53,6 +53,7 @@ struct DeviceListView: View {
             }
             .navigationTitle("Devices")
             .toolbar {
+                #if !targetEnvironment(macCatalyst)
                 ToolbarItem(placement: .topBarTrailing) {
                     // Pushed onto the stack rather than presented as a sheet, so the
                     // settings slide in from the edge the way they did in SBU — and so
@@ -65,6 +66,7 @@ struct DeviceListView: View {
                             .labelStyle(.iconOnly)
                     }
                 }
+                #endif
                 ToolbarItem(placement: .topBarLeading) {
                     if connection.status == .scanning {
                         ProgressView()
