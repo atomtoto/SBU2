@@ -16,6 +16,8 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 - Températures des sondes NTC.
 - Protections actives (surtension, sous-tension, surintensité, court-circuit…).
 - Activation / coupure des MOSFET de charge et de décharge, avec confirmation.
+- Synchronisation iCloud des préférences de l'app et des profils de BMS entre
+  iPhone, iPad, Mac et Apple Watch, avec association explicite du même BMS.
 - Sur Apple Watch : connexion Bluetooth directe au BMS, lecture de l'état de
   charge, tension, courant, puissance, cellules, températures et alertes, puis
   commandes MOSFET avec confirmation. Aucun iPhone n'est requis à proximité.
@@ -65,7 +67,7 @@ Apple Watch restent propres à la version iOS.
 
 La cible `SBU2Watch` est intégrée à l'app iOS. Sur la montre, ouvrez SBU2,
 choisissez un BMS détecté, puis parcourez ses mesures. Les réglages enregistrés
-sur l'iPhone et ceux de la montre sont indépendants. La liaison directe est
+sur l'iPhone et ceux de la montre peuvent partager un profil iCloud. La liaison directe est
 maintenue pendant la consultation de l'app ; watchOS peut suspendre l'app quand
 elle passe en arrière-plan. Il n'y a pas de complication sur le cadran.
 
@@ -74,6 +76,97 @@ Le workflow `.github/workflows/ci.yml` fait la même chose sur un runner macOS
 que la branche ait une pull request ouverte ou non. Le dépôt étant privé, ces
 minutes sont facturées ×10 : ajoutez `[skip ci]` au message de commit pour les
 changements qui ne touchent pas au code.
+
+## Synchronisation iCloud
+
+La synchronisation est activée par défaut et utilise le stockage clé-valeur
+iCloud (`NSUbiquitousKeyValueStore`). Les appareils doivent être connectés au
+même compte iCloud. Le thème, l'unité de capacité, le contraste des cellules et
+l'affichage du BMS de démonstration sont partagés automatiquement. Pour un BMS
+réel, seuls les appareils associés explicitement à son profil partagent son nom,
+son icône, ses styles, ses paramètres d'affichage, de chimie, de limite de charge
+et de recharge programmée.
+
+Les mots de passe du BMS, l'auto-connexion, le maintien de l'écran allumé et la
+confirmation des commandes MOSFET restent locaux. Les mesures Bluetooth, les
+commandes matérielles et le trajet GPS ne sont pas synchronisés. Synchroniser un
+réglage de limite ou de recharge programmée ne déclenche aucune commande sur le
+BMS : ces fonctions restent déclaratives comme indiqué dans les limites connues.
+
+### Configurer la signature
+
+Les entitlements de `SBU2` sur iOS, de sa variante Mac Catalyst et de
+`SBU2Watch` déclarent le même `com.apple.developer.ubiquity-kvstore-identifier` :
+`$(TeamIdentifierPrefix)atom.sbu2`. Gardez un identifiant de stockage commun,
+y compris si vous adaptez les identifiants de bundle, et utilisez la même équipe
+de développement pour toutes ces cibles, suivant la
+[configuration de stockage clé-valeur commun décrite par Apple](https://developer.apple.com/library/archive/documentation/General/Conceptual/iCloudDesignGuide/Chapters/iCloudFundametals.html).
+
+Dans le compte Apple Developer, activez iCloud avec le service **Key-value
+storage** pour les App IDs de l'app et de la montre. Dans **Signing &
+Capabilities** d'Xcode, vérifiez la capacité iCloud et le service **Key-value
+storage** de chaque cible, puis laissez la signature automatique actualiser les
+profils de provisioning ; avec une signature manuelle, régénérez les profils
+correspondants. Aucun conteneur CloudKit ni schéma CloudKit n'est nécessaire.
+Une compilation avec `CODE_SIGNING_ALLOWED=NO` vérifie le code, mais ne valide pas
+les droits iCloud ni les échanges entre appareils.
+
+### Associer un BMS sur plusieurs appareils
+
+1. Vérifiez que **Settings → iCloud → Sync with iCloud** est activé sur les
+   appareils concernés. Sur la montre, le bouton iCloud de la liste des batteries
+   ouvre ce réglage.
+2. Sur le premier appareil, connectez le BMS, ouvrez ses **Settings**, puis
+   choisissez **Share This BMS with iCloud**. Cela crée son profil partagé.
+3. Sur un autre appareil, connectez ce même BMS et choisissez **Link an Existing
+   Profile** dans ses réglages. Sélectionnez le profil créé à l'étape précédente.
+   Seuls les profils compatibles avec le protocole détecté sont proposés.
+4. Confirmez : le nom, l'icône et les réglages partagés du profil remplacent ceux
+   enregistrés sur cet appareil. Son mot de passe et son choix d'auto-connexion
+   sont conservés.
+
+Sur la montre, touchez le bouton nuage à côté d'une batterie dans la liste pour
+ouvrir **iCloud Profile**, puis créer un profil ou en sélectionner un existant. Les identifiants
+Bluetooth ne sont pas les mêmes sur tous les appareils : l'app ne devine pas
+quels BMS correspondent. La sélection du profil reste explicite.
+
+**Stop Sharing on This Device** — ou **Stop Sharing on This Watch** — conserve
+les réglages présents sur cet appareil et laisse le profil disponible ailleurs.
+**Forget This BMS** supprime aussi son profil partagé et réinitialise les choix
+partagés sur les appareils qui y étaient associés ; leurs mots de passe et
+choix d'auto-connexion locaux sont conservés. La confirmation indique cette
+suppression entre appareils.
+
+### Hors ligne, conflits et limites
+
+Les réglages sont toujours enregistrés localement. Les modifications sont mises
+en attente hors ligne et sont transférées lorsqu'iCloud est disponible. L'app
+actualise les échanges à son ouverture et lorsqu'elle revient au premier plan ;
+**Sync Now** demande également une actualisation, sans garantir un transfert
+réseau immédiat. Les notifications iCloud appliquent les changements reçus à un
+BMS déjà ouvert.
+
+Pour un profil de BMS modifié sur plusieurs appareils, l'édition dont
+l'horodatage est le plus récent l'emporte sur l'ensemble des réglages partagés
+du profil. Les champs d'un profil ne sont pas fusionnés individuellement ; les
+préférences de l'app sont, elles, arbitrées séparément. En cas d'horodatage égal,
+l'identifiant de modification départage les éditions de manière déterministe.
+La suppression d'un profil reste définitive, même face à une modification hors
+ligne arrivée plus tard.
+
+Le stockage clé-valeur iCloud est
+[limité à 1 Mo et 1 024 clés par app et compte](https://developer.apple.com/library/archive/documentation/General/Conceptual/iCloudDesignGuide/Chapters/DesigningForKey-ValueDataIniCloud.html).
+Une image Genmoji volumineuse peut dépasser le budget avec les autres profils :
+le profil concerné reste enregistré localement et le statut iCloud signale que
+certains réglages ou icônes n'ont pas pu être transférés. Choisissez un symbole
+ou un emoji plus léger pour réduire sa taille.
+
+Lors d'un changement de compte Apple, la synchronisation est automatiquement
+désactivée et les associations, la copie des profils iCloud et les modifications
+en attente de l'ancien compte sont effacées. Les réglages locaux restent
+disponibles. Réactivez explicitement la synchronisation et associez les BMS aux
+profils du compte courant : les profils et la file d'attente de l'ancien compte
+ne sont pas envoyés automatiquement vers le nouveau.
 
 ## Organisation du code
 
@@ -89,6 +182,7 @@ changements qui ne touchent pas au code.
 | `SBU2/Views/Overview/` | Tableau de bord du pack, repris à l'identique de SBU. |
 | `SBU2/Views/GPS/` | Cadrans et relevés de trajet, repris à l'identique de SBU. |
 | `SBU2/Views/Settings/` | Réglages appareil et application. |
+| `SBU2/Model/ICloudSettingsSync.swift` | Synchronisation clé-valeur iCloud, profils explicitement associés, conflits et file d'attente hors ligne. |
 | `SBU2Tests/` | Tests du protocole et du décodage (Swift Testing). |
 | `SBU2Watch/` | Interface Apple Watch, utilisant directement le moteur Bluetooth et les modèles communs. |
 

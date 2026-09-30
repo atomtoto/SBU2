@@ -43,7 +43,7 @@ enum CapacityUnit: String, Codable, CaseIterable, Identifiable {
 @Observable
 final class AppSettings {
 
-    private static let key = "app.settings"
+    static let key = "app.settings"
 
     var showDemoDevice = true
     var capacityUnit: CapacityUnit = .ampereHours
@@ -86,6 +86,11 @@ final class AppSettings {
     }
 
     init() {
+        reload()
+    }
+
+    /// Re-read the local working copy after iCloud merges shared preferences.
+    func reload() {
         guard let data = UserDefaults.standard.data(forKey: Self.key),
               let stored = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         showDemoDevice = stored.showDemoDevice
@@ -99,6 +104,7 @@ final class AppSettings {
     func persist() {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.key)
+        ICloudSettingsSync.shared.appSettingsDidChange(snapshot)
     }
 
     static var versionString: String {
@@ -447,7 +453,7 @@ struct DeviceSettings: Codable, Equatable {
 /// Loads and stores `DeviceSettings` per peripheral in `UserDefaults`.
 enum DeviceSettingsStore {
 
-    private static func key(for id: String) -> String { "device.settings.\(id)" }
+    static func key(for id: String) -> String { "device.settings.\(id)" }
 
     static func load(_ id: String) -> DeviceSettings {
         guard let data = UserDefaults.standard.data(forKey: key(for: id)),
@@ -459,6 +465,7 @@ enum DeviceSettingsStore {
     static func save(_ settings: DeviceSettings, for id: String) {
         guard let data = try? JSONEncoder().encode(settings) else { return }
         UserDefaults.standard.set(data, forKey: key(for: id))
+        ICloudSettingsSync.shared.deviceSettingsDidChange(settings, for: id)
     }
 
     /// Drops everything the app remembers about one device: its name, its kind,
@@ -467,5 +474,6 @@ enum DeviceSettingsStore {
     /// has never seen.
     static func forget(_ id: String) {
         UserDefaults.standard.removeObject(forKey: key(for: id))
+        ICloudSettingsSync.shared.forgetDevice(id)
     }
 }

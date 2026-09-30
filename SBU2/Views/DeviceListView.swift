@@ -9,15 +9,12 @@ import SwiftUI
 struct DeviceListView: View {
     @Environment(BMSConnection.self) private var connection
     @Environment(AppSettings.self) private var appSettings
+    @Environment(ICloudSettingsSync.self) private var iCloudSync
 
     @State private var opened: DiscoveredBMS?
     @State private var hasAutoConnected = false
     /// The device whose icon is being chosen.
     @State private var customising: DiscoveredBMS?
-    /// Icons picked in this session. The store behind them is plain `UserDefaults`,
-    /// which nothing observes, so a pick is held here too in order to reach the card
-    /// it was made on straight away.
-    @State private var pickedIcons: [String: DeviceIcon?] = [:]
 
     private let columns = [GridItem(.adaptive(minimum: 165), spacing: 12)]
 
@@ -92,12 +89,7 @@ struct DeviceListView: View {
             }
             .onChange(of: opened) { _, value in
                 if value == nil {
-                    // Returning from a device that was just forgotten: drop the icon
-                    // pick made this session too, or the card would go on wearing it
-                    // until the next launch even though the disk was purged.
-                    if let forgotten = connection.takeForgottenDeviceID() {
-                        pickedIcons.removeValue(forKey: forgotten)
-                    }
+                    _ = connection.takeForgottenDeviceID()
                     connection.close()
                 }
             }
@@ -117,19 +109,17 @@ struct DeviceListView: View {
 
     // MARK: - Icons
 
-    /// What this device draws for itself, honouring a pick made a moment ago before
-    /// falling back to what is on disk.
+    /// Observe the store's revision so local picks and incoming cloud changes both
+    /// redraw the card without a second copy of the icon hiding remote edits.
     private func icon(for device: DiscoveredBMS) -> DeviceIcon {
-        if let picked = pickedIcons[device.id] {
-            return picked ?? .standard(isDemo: device.isDemo)
-        }
+        _ = iCloudSync.revision
         return DeviceSettingsStore.load(device.id).icon(isDemo: device.isDemo)
     }
 
     /// The choice itself rather than the resolved icon: `nil` means "still on the
     /// default", which is what the picker needs to know to offer putting it back.
     private func storedIcon(for device: DiscoveredBMS) -> DeviceIcon? {
-        if let picked = pickedIcons[device.id] { return picked }
+        _ = iCloudSync.revision
         return DeviceSettingsStore.load(device.id).storedIcon
     }
 
@@ -137,7 +127,6 @@ struct DeviceListView: View {
         var settings = DeviceSettingsStore.load(device.id)
         settings.storedIcon = icon
         DeviceSettingsStore.save(settings, for: device.id)
-        pickedIcons.updateValue(icon, forKey: device.id)
 
         // The open device holds its own copy of these settings, so write it there
         // too rather than leaving the two to disagree until the next reconnection.

@@ -4,11 +4,5 @@
 <dict>
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
 	<string>$(TeamIdentifierPrefix)atom.sbu2</string>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.device.bluetooth</key>
-	<true/>
-	<key>com.apple.security.personal-information.location</key>
-	<true/>
 </dict>
 </plist>

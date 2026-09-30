@@ -10,16 +10,31 @@ import UIKit
 struct SBU2App: App {
     /// Only there to answer the iPhone orientation question.
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var connection = BMSConnection()
     @State private var appSettings = AppSettings()
+    @State private var iCloudSync = ICloudSettingsSync.shared
 
     var body: some Scene {
         WindowGroup {
             DeviceListView()
                 .environment(connection)
                 .environment(appSettings)
+                .environment(iCloudSync)
                 .preferredColorScheme(colorScheme)
+                .task {
+                    iCloudSync.start()
+                    appSettings.reload()
+                    connection.reloadSavedSettings()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: ICloudSettingsSync.didChange)) { _ in
+                    appSettings.reload()
+                    connection.reloadSavedSettings()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { iCloudSync.synchronize() }
+                }
                 .onChange(of: appSettings.keepScreenAwake, initial: true) { _, keepAwake in
                     #if !targetEnvironment(macCatalyst)
                     UIApplication.shared.isIdleTimerDisabled = keepAwake
@@ -35,7 +50,16 @@ struct SBU2App: App {
                 AppSettingsView()
             }
             .environment(appSettings)
+            .environment(iCloudSync)
             .preferredColorScheme(colorScheme)
+            .task { iCloudSync.start() }
+            .onReceive(NotificationCenter.default.publisher(for: ICloudSettingsSync.didChange)) { _ in
+                appSettings.reload()
+                connection.reloadSavedSettings()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { iCloudSync.synchronize() }
+            }
             .onChange(of: appSettings.snapshot) { _, _ in
                 appSettings.persist()
             }

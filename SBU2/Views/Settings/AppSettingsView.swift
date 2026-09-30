@@ -8,11 +8,28 @@ import SwiftUI
 /// App-wide preferences, shown in a Mac tab or from the iOS gear.
 struct AppSettingsView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(ICloudSettingsSync.self) private var iCloudSync
 
     var body: some View {
         @Bindable var settings = settings
 
         Form {
+            Section {
+                Toggle("Sync with iCloud", isOn: Binding(
+                    get: { iCloudSync.isEnabled },
+                    set: { iCloudSync.setEnabled($0) }
+                ))
+                Text(iCloudSync.statusText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Sync Now") { iCloudSync.synchronize() }
+                    .disabled(!iCloudSync.isEnabled)
+            } header: {
+                Text("iCloud")
+            } footer: {
+                Text("Shares your theme, units and display preferences across devices signed into the same iCloud account. To share a BMS name, icon and customised settings, create a profile in its Settings, then link that same BMS on your other devices. Bluetooth identifiers differ between devices. Passwords, auto-connect, automatic standby and MOSFET confirmations stay on each device.")
+            }
+
             Section {
                 Toggle("Enable Demo Device", isOn: $settings.showDemoDevice)
             } header: {

@@ -160,10 +160,8 @@ final class BMSConnection: NSObject {
     /// the forget and the close would rewrite the key that was just purged.
     private var persistsSettings = true
 
-    /// The device the user just asked the app to forget, kept until something acts
-    /// on it. The device list takes it to drop the icon it has been holding in
-    /// memory for that device — the one piece of its settings that is mirrored
-    /// outside the store.
+    /// The device the user just asked the app to forget, kept until the device
+    /// list consumes it while closing the destination.
     private var forgottenDeviceID: String?
 
     /// Hands the forgotten device's id to whoever asked, once.
@@ -175,6 +173,15 @@ final class BMSConnection: NSObject {
     func saveSettings() {
         guard let openDeviceID, persistsSettings else { return }
         DeviceSettingsStore.save(settings, for: openDeviceID)
+    }
+
+    /// Remote preferences update the display only. The adapter and hardware
+    /// commands continue to use the protocol negotiated for this connection.
+    func reloadSavedSettings() {
+        guard let openDeviceID, persistsSettings else { return }
+        var stored = DeviceSettingsStore.load(openDeviceID)
+        stored.protocolID = protocolID
+        if stored != settings { settings = stored }
     }
 
     /// Drops everything the app remembers about the open device, and stops writing

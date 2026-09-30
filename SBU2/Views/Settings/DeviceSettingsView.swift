@@ -8,6 +8,7 @@ import SwiftUI
 /// Per-device preferences — the "More" tab of SBU.
 struct DeviceSettingsView: View {
     @Environment(BMSConnection.self) private var connection
+    @Environment(ICloudSettingsSync.self) private var iCloudSync
     /// Pops back to the device list once the device is forgotten: the destination
     /// goes away, the list's own handler closes the connection behind it.
     @Environment(\.dismiss) private var dismiss
@@ -69,6 +70,10 @@ struct DeviceSettingsView: View {
                 Text(connection.isDemoOpen
                      ? "Changing the device type allows you to access additional menus. The protocol decides which family the simulated pack imitates: the two do not measure the same things and do not accept the same commands, so switching is how to see what each one offers without the hardware."
                      : "Changing the device type allows you to access additional menus.")
+            }
+
+            if let deviceID = connection.openDeviceID, !connection.isDemoOpen {
+                iCloudSection(deviceID: deviceID)
             }
 
             // Out of the GPS section, which only vehicles see: the overview's power
@@ -150,7 +155,7 @@ struct DeviceSettingsView: View {
             } footer: {
                 Text(connection.isDemoOpen
                      ? "Restores the simulated pack's settings to their defaults. It stays in the list, ready to be customised again."
-                     : "Removes everything the app remembers about this device — its name, icon, auto-connect and every customised setting. Nothing on the pack itself is changed, and it can be connected again at any time.")
+                     : "Removes everything the app remembers about this device — its name, icon, auto-connect and every customised setting.\(isLinkedToICloud ? " Its shared iCloud profile is also deleted on your other devices." : "") Nothing on the pack itself is changed, and it can be connected again at any time.")
             }
         }
         .centeredMacForm()
@@ -166,6 +171,57 @@ struct DeviceSettingsView: View {
         } message: {
             Text(forgetWarning)
         }
+    }
+
+    private func iCloudSection(deviceID: String) -> some View {
+        let profileID = iCloudSync.profileID(for: deviceID)
+        let profile = iCloudSync.profiles.first { $0.id == profileID }
+        let otherProfiles = iCloudSync.availableProfiles(for: connection.protocolID)
+            .filter { $0.id != profileID }
+
+        return Section {
+            if let profile {
+                LabeledContent("Shared profile", value: profile.label)
+            } else {
+                Button("Share This BMS with iCloud", systemImage: "icloud") {
+                    connection.saveSettings()
+                    let name = connection.discovered.first(where: { $0.id == deviceID })
+                        .map { connection.displayName(for: $0) } ?? displayName
+                    iCloudSync.shareDevice(deviceID, fallbackName: name)
+                }
+                .disabled(!iCloudSync.isEnabled)
+            }
+
+            NavigationLink("Link an Existing Profile") {
+                DeviceSyncProfilesView(deviceID: deviceID, protocolID: connection.protocolID)
+            }
+            .disabled(!iCloudSync.isEnabled || otherProfiles.isEmpty)
+
+            if profileID != nil {
+                Button("Stop Sharing on This Device") {
+                    iCloudSync.unlinkDevice(deviceID)
+                }
+            }
+
+            Text(iCloudSync.statusText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if !iCloudSync.isEnabled {
+                Text("Enable iCloud sync in the app settings to share this BMS.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("iCloud")
+        } footer: {
+            Text("Create a shared profile on one device, then link the same physical BMS to that profile on your other devices. Only profiles for this protocol are offered. Linking replaces this device's name, icon and shared settings with the profile's values. Passwords and auto-connect stay on this device. Stopping sharing keeps your current settings and the profile on your other devices.")
+        }
+    }
+
+    private var isLinkedToICloud: Bool {
+        guard let deviceID = connection.openDeviceID else { return false }
+        return iCloudSync.profileID(for: deviceID) != nil
     }
 
     /// What the pack is called this very moment — the name the user is about to stop
@@ -186,10 +242,13 @@ struct DeviceSettingsView: View {
         if connection.isDemoOpen {
             return "The demo pack keeps its place in the list. Its name, family and customised settings go back to the defaults."
         }
+        let cloudWarning = isLinkedToICloud
+            ? " Its shared iCloud profile is also deleted on your other devices."
+            : ""
         if connection.settings.refillLaterEnabled {
-            return "This erases the device's name, icon, password, calibration, charge limit and styles — and cancels the refill you have scheduled. It cannot be undone."
+            return "This erases the device's name, icon, password, calibration, charge limit and styles — and cancels the refill you have scheduled.\(cloudWarning) It cannot be undone."
         }
-        return "This erases the device's name, icon, password, calibration, charge limit and styles. It cannot be undone; reconnecting starts it from factory settings."
+        return "This erases the device's name, icon, password, calibration, charge limit and styles.\(cloudWarning) It cannot be undone; reconnecting starts it from factory settings."
     }
 
     /// Drops the device's settings and leaves. The connection is closed here rather
@@ -201,6 +260,69 @@ struct DeviceSettingsView: View {
         connection.forgetOpenDevice()
         connection.close()
         Task { @MainActor in dismiss() }
+    }
+}
+
+/// A profile is chosen explicitly: Bluetooth identifiers cannot establish which
+/// physical pack another phone, Mac or watch has discovered.
+private struct DeviceSyncProfilesView: View {
+    @Environment(ICloudSettingsSync.self) private var iCloudSync
+    @Environment(\.dismiss) private var dismiss
+    @State private var pendingProfile: SyncedDeviceProfile?
+    @State private var profileUnavailable = false
+
+    let deviceID: String
+    let protocolID: BMSProtocolID
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(iCloudSync.availableProfiles(for: protocolID)) { profile in
+                    Button {
+                        pendingProfile = profile
+                    } label: {
+                        HStack {
+                            Text(profile.label)
+                            Spacer()
+                            if iCloudSync.profileID(for: deviceID) == profile.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(!iCloudSync.isEnabled || iCloudSync.profileID(for: deviceID) == profile.id)
+                }
+            } footer: {
+                Text("Choose the profile for this physical BMS. Its name, icon and shared settings will replace those saved here; your password and auto-connect choice stay on this device.")
+            }
+        }
+        .centeredMacForm()
+        .navigationTitle("Shared Profiles")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Use “\(pendingProfile?.label ?? "this profile")”?",
+                            isPresented: Binding(
+                                get: { pendingProfile != nil },
+                                set: { if !$0 { pendingProfile = nil } }
+                            ),
+                            titleVisibility: .visible) {
+            if let profile = pendingProfile {
+                Button("Use Profile") {
+                    if iCloudSync.linkDevice(deviceID, to: profile.id) {
+                        dismiss()
+                    } else {
+                        profileUnavailable = true
+                    }
+                    pendingProfile = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingProfile = nil }
+        } message: {
+            Text("This replaces the name, icon and shared settings saved for this BMS on this device.")
+        }
+        .alert("Profile unavailable", isPresented: $profileUnavailable) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("The profile may have been removed or iCloud sync turned off. Refresh iCloud and try again.")
+        }
     }
 }
 
