@@ -24,18 +24,33 @@ struct OverviewView: View {
             let wide = geometry.size.width >= 900
 
             ScrollView {
-                Group {
-                    if wide {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(spacing: 10) { controls }
-                                .frame(maxWidth: .infinity)
-                            VStack(spacing: 10) { readings }
-                                .frame(maxWidth: .infinity)
-                        }
-                    } else {
-                        VStack(spacing: 10) {
-                            controls
-                            readings
+                // Refresh even when BLE is silent, so the freshness notice and
+                // disabled commands change as soon as a reading becomes outdated.
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    let now = Date.now
+                    VStack(spacing: 10) {
+                        OverviewConnectionNotice(
+                            state: OverviewConnectionState(
+                                status: connection.status,
+                                isDemo: connection.isDemoOpen,
+                                isReconnecting: connection.isReconnecting,
+                                hasReading: connection.hasReading,
+                                lastBasicInfoAt: connection.lastBasicInfoAt,
+                                now: now),
+                            lastBasicInfoAt: connection.lastBasicInfoAt,
+                            now: now)
+                        if wide {
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(spacing: 10) { controls }
+                                    .frame(maxWidth: .infinity)
+                                VStack(spacing: 10) { readings }
+                                    .frame(maxWidth: .infinity)
+                            }
+                        } else {
+                            VStack(spacing: 10) {
+                                controls
+                                readings
+                            }
                         }
                     }
                 }
@@ -78,6 +93,7 @@ struct OverviewView: View {
         @Bindable var connection = connection
 
         DetailBox(info: connection.info,
+                  hasReading: connection.hasReading,
                   capacityUnit: appSettings.capacityUnit,
                   settings: $connection.settings)
         ButtonBox(info: connection.info,
@@ -103,6 +119,7 @@ struct OverviewView: View {
         @Bindable var connection = connection
 
         PackSummaryBox(info: connection.info,
+                       hasReading: connection.hasReading,
                        summary: connection.cellSummary,
                        resistances: connection.cellResistances,
                        readout: readout,
@@ -251,6 +268,7 @@ private struct ButtonBox: View {
 /// It began as the temperatures alone, which is what it used to be named after.
 private struct PackSummaryBox: View {
     let info: BasicInfo
+    let hasReading: Bool
     let summary: CellSummary?
     /// The wire resistances, where the pack measures them, and which of the two
     /// readouts the box below is showing. The two ends named here follow that choice:
@@ -287,7 +305,12 @@ private struct PackSummaryBox: View {
                     }
                 }
                 if info.temperatures.isEmpty {
-                    Text("No temperature sensors available.")
+                    if hasReading {
+                        Text("No temperature sensors available.")
+                    } else {
+                        Text("Temperatures: —")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -296,6 +319,10 @@ private struct PackSummaryBox: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
+                if !hasReading, summary == nil {
+                    Text("Cell voltages: —")
+                        .foregroundStyle(.secondary)
+                }
                 if let wiring = resistanceSummary {
                     // The worst connection first, because that is the one worth doing
                     // something about — the opposite way round from the voltages,
@@ -487,12 +514,12 @@ private struct BatteryInfoBox: View {
                 HStack {
                     Text("Cycle count")
                     Spacer()
-                    Text("\(info.cycles)")
+                    Text(hasReading ? "\(info.cycles)" : "—")
                 }
                 HStack {
                     Text("Version")
                     Spacer()
-                    Text(info.softwareVersion)
+                    Text(hasReading && !info.softwareVersion.isEmpty ? info.softwareVersion : "—")
                 }
                 HStack {
                     Text("Production date")

@@ -17,6 +17,7 @@ import UIKit
 /// numbers; only the dial in front of the state of charge comes and goes.
 struct DetailBox: View {
     let info: BasicInfo
+    let hasReading: Bool
     let capacityUnit: CapacityUnit
     /// This pack's own settings: the style it is drawn in, and the power the meter
     /// is scaled against — the same figure that calibrates the power dial on the GPS
@@ -52,8 +53,8 @@ struct DetailBox: View {
     private var ringLayout: some View {
         HStack(alignment: .center, spacing: 20) {
             RingGauge(fraction: chargeFraction,
-                      tint: .stateOfChargeOverview(info.stateOfCharge)) {
-                Text(info.stateOfChargeText)
+                      tint: chargeTint) {
+                Text(readout(info.stateOfChargeText))
                     .font(.system(size: 24, weight: .bold))
             }
             .frame(width: 140, height: 120)
@@ -61,14 +62,14 @@ struct DetailBox: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 13) {
-                Text(info.powerText)
+                Text(readout(info.powerText))
                     .font(.system(size: 19, weight: .bold))
-                Text(info.currentText)
+                Text(readout(info.currentText))
                     .font(.system(size: 14, weight: .bold))
-                Text(info.voltageText)
+                Text(readout(info.voltageText))
                     .font(.system(size: 14, weight: .bold))
-                Text(info.capacityText(unit: capacityUnit,
-                                       cellNominalMillivolts: settings.cellNominalVoltage))
+                Text(readout(info.capacityText(unit: capacityUnit,
+                                               cellNominalMillivolts: settings.cellNominalVoltage)))
                     .font(.system(size: 13, weight: .bold))
                     .lineLimit(1)
             }
@@ -81,26 +82,26 @@ struct DetailBox: View {
     private var barLayout: some View {
         VStack(alignment: .leading, spacing: 14) {
             meter(title: "State of charge",
-                  value: info.stateOfChargeText,
+                  value: readout(info.stateOfChargeText),
                   fraction: chargeFraction,
-                  tint: .stateOfChargeOverview(info.stateOfCharge),
+                  tint: chargeTint,
                   anchor: .leading)
 
             // Out of the pack fills rightwards, the way any bar fills. Into it fills
             // back from the far end, so which way the energy is going can be read
             // without looking at the sign in front of the figure.
             meter(title: powerTitle,
-                  value: info.powerText,
+                  value: readout(info.powerText),
                   fraction: powerFraction,
                   tint: powerTint,
                   anchor: info.current > 0 ? .trailing : .leading)
 
             Divider()
 
-            figure("Current", info.currentText)
-            figure("Voltage", info.voltageText)
-            figure("Capacity", info.capacityText(unit: capacityUnit,
-                                                 cellNominalMillivolts: settings.cellNominalVoltage))
+            figure("Current", readout(info.currentText))
+            figure("Voltage", readout(info.voltageText))
+            figure("Capacity", readout(info.capacityText(unit: capacityUnit,
+                                                         cellNominalMillivolts: settings.cellNominalVoltage)))
         }
     }
 
@@ -138,24 +139,32 @@ struct DetailBox: View {
 
     // MARK: - Figures behind the bars
 
-    private var chargeFraction: Double { Double(info.stateOfCharge) / 100 }
+    private func readout(_ value: String) -> String { hasReading ? value : "—" }
+
+    private var chargeFraction: Double { hasReading ? Double(info.stateOfCharge) / 100 : 0 }
+
+    private var chargeTint: Color {
+        hasReading ? .stateOfChargeOverview(info.stateOfCharge) : .gray
+    }
 
     /// Against what this pack was told to treat as a full load. Nothing to measure
     /// against if that was never set, so the bar stays empty rather than inventing a
     /// scale.
     private var powerFraction: Double {
-        guard settings.expectedPower > 0 else { return 0 }
+        guard hasReading, settings.expectedPower > 0 else { return 0 }
         return min(abs(info.power) / Double(settings.expectedPower), 1)
     }
 
     /// The row says which way the current is going; the fill direction says it again.
     private var powerTitle: String {
+        guard hasReading else { return "Power" }
         if info.current > 0 { return "Charging" }
         if info.current < 0 { return "Discharging" }
         return "Power"
     }
 
     private var powerTint: Color {
+        guard hasReading else { return .gray }
         if info.current > 0 { return .green }
         if info.current < 0 { return .orange }
         return .gray

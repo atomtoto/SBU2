@@ -10,6 +10,10 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
 - Recherche des modules JBD/JK à proximité et connexion.
 - Rafraîchissement automatique une fois par seconde, avec reconnexion
   automatique si le dongle coupe la liaison.
+- Sur iPhone, iPad et Mac, le tableau de bord indique l'état de connexion et
+  l'âge de la dernière mesure du pack. Les valeurs inconnues affichent des tirets ;
+  les mesures de plus de cinq secondes sont signalées comme périmées et les
+  commandes MOSFET sont désactivées jusqu'à la prochaine mesure valide.
 - Tension du pack, courant, puissance, état de charge, capacité restante et
   estimation du temps de charge / d'autonomie.
 - Tension de chaque cellule, écart maximal, cellules en cours d'équilibrage.

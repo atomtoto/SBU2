@@ -91,6 +91,9 @@ final class BMSConnection: NSObject {
     // MARK: Observable state
 
     private(set) var status: Status = .idle
+    /// An automatic retry stays distinct from the initial connection until a new
+    /// basic-information frame arrives, including during service discovery.
+    private(set) var isReconnecting = false
     private(set) var discovered: [DiscoveredBMS] = []
     private(set) var info = BasicInfo()
     /// Whether the pack has actually sent a basic-information frame yet.
@@ -358,6 +361,7 @@ final class BMSConnection: NSObject {
         Task { await chargeLiveActivity.endImmediately() }
         #endif
         central.stopScan()
+        isReconnecting = false
         lastError = nil
         passwordOutcome = .idle
         clearAlertsOutcome = .idle
@@ -407,6 +411,7 @@ final class BMSConnection: NSObject {
         Task { await chargeLiveActivity.endImmediately() }
         #endif
         wantsConnection = false
+        isReconnecting = false
         stopPolling()
         demo = nil
         openDeviceID = nil
@@ -857,6 +862,7 @@ final class BMSConnection: NSObject {
                 saveSettings()
             }
             hasReading = true
+            isReconnecting = false
             lastUpdate = .now
             lastBasicInfoAt = lastUpdate
             noteForEstimate(decoded)
@@ -982,6 +988,7 @@ extension BMSConnection: CBCentralManagerDelegate {
             return
         }
         // Dongles drop the link regularly; reconnecting keeps the dashboard live.
+        isReconnecting = true
         status = .connecting(peripheral.name ?? "BMS")
         central.connect(peripheral)
     }
