@@ -10,6 +10,7 @@ struct DeviceListView: View {
     @Environment(BMSConnection.self) private var connection
     @Environment(AppSettings.self) private var appSettings
     @Environment(ICloudSettingsSync.self) private var iCloudSync
+    @Environment(AppRuntime.self) private var runtime
 
     @State private var opened: DiscoveredBMS?
     @State private var hasAutoConnected = false
@@ -74,7 +75,9 @@ struct DeviceListView: View {
             // minimum time: a rescan that finds nothing new collapses the indicator
             // almost before it has appeared, which reads as a flicker, not a refresh.
             .refreshable {
-                connection.startScanning()
+                // Returning to this list must not restart discovery over a pack
+                // that is still supplying the CarPlay dashboard.
+                if connection.openDeviceID == nil { connection.startScanning() }
                 try? await Task.sleep(for: .seconds(0.8))
             }
             .navigationDestination(item: $opened) { device in
@@ -89,9 +92,14 @@ struct DeviceListView: View {
             }
             .onChange(of: opened) { _, value in
                 if value == nil {
-                    _ = connection.takeForgottenDeviceID()
-                    connection.close()
+                    let wasForgotten = connection.takeForgottenDeviceID() != nil
+                    if wasForgotten || !runtime.isCarPlayConnected { connection.close() }
                 }
+            }
+            .onChange(of: connection.openDeviceID, initial: true) { _, id in
+                // A selection or disconnect on CarPlay also updates the phone's
+                // destination, without opening a second Bluetooth connection.
+                opened = connection.discovered.first { $0.id == id }
             }
             .onChange(of: appSettings.showDemoDevice, initial: true) { _, show in
                 connection.setShowDemoDevice(show)
@@ -136,13 +144,14 @@ struct DeviceListView: View {
     }
 
     private func open(_ device: DiscoveredBMS) {
-        connection.open(device)
+        if connection.openDeviceID != device.id { connection.open(device) }
         opened = device
     }
 
     /// Opens the device the user marked for auto-connect, once per launch.
     private func autoConnectIfNeeded() {
         guard !hasAutoConnected, opened == nil,
+              connection.openDeviceID == nil,
               let target = connection.autoConnectTarget else { return }
         hasAutoConnected = true
         open(target)

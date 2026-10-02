@@ -27,6 +27,10 @@ uniquement sur SwiftUI, `Observation` et CoreBluetooth.
   commandes MOSFET avec confirmation. Aucun iPhone n'est requis à proximité.
   Les mesures de plus de cinq secondes sont signalées comme périmées et les
   commandes MOSFET sont alors désactivées jusqu'à la prochaine mesure valide.
+- Sur Apple CarPlay : sélection du BMS et tableau de bord en lecture seule,
+  avec état de charge, tension, courant, puissance, capacité, température maximale,
+  estimation du temps restant et protections actives. La connexion est partagée
+  avec l'iPhone et les mesures périmées sont remplacées par des tirets.
 
 ## Prérequis
 
@@ -80,6 +84,56 @@ Le workflow `.github/workflows/ci.yml` fait la même chose sur un runner macOS
 que la branche ait une pull request ouverte ou non. Le dépôt étant privé, ces
 minutes sont facturées ×10 : ajoutez `[skip ci]` au message de commit pour les
 changements qui ne touchent pas au code.
+
+## Apple CarPlay
+
+L'app iOS déclare une scène `CPTemplateApplicationScene`, utilisant les modèles
+natifs `CPListTemplate` et `CPTabBarTemplate`. Les onglets **Battery** et
+**Devices** permettent de consulter le pack, de choisir un BMS détecté et de
+relancer une recherche. Le BMS configuré pour l'auto-connexion est sélectionné
+au démarrage s'il est détecté. L'appareil de démonstration est également disponible
+si son affichage est activé dans les réglages.
+
+CarPlay et l'iPhone utilisent le même moteur Bluetooth : un changement de BMS
+sur un écran se reflète sur l'autre. Revenir à la liste sur l'iPhone pendant
+qu'une scène CarPlay est connectée conserve la liaison. **Disconnect** dans
+CarPlay ferme la liaison et relance la recherche. Débrancher CarPlay libère ses
+écrans mais laisse la connexion disponible sur l'iPhone.
+
+Les mesures sont actualisées toutes les secondes. Une mesure de plus de cinq
+secondes, une connexion perdue ou l'absence de première réponse affichent des
+tirets ; les erreurs et la reconnexion restent visibles. Le tableau de bord
+reste en lecture seule : les commandes MOSFET et les réglages matériels sont
+disponibles dans l'app iPhone. Le trajet GPS n'est pas affiché sur CarPlay.
+
+### Signature et validation
+
+L'entitlement iOS `com.apple.developer.carplay-driving-task` est déclaré dans
+`SBU2.entitlements`, uniquement pour la cible iOS. Il faut
+[demander à Apple le droit CarPlay](https://developer.apple.com/carplay/)
+pour la catégorie **Driving task**, obtenir son approbation pour cet usage et
+activer la capacité correspondante sur l'App ID `atom.sbu2`. Régénérez ensuite
+le profil de provisioning ou laissez Xcode le renouveler avec la signature
+automatique. Déclarer l'entitlement dans le dépôt ne remplace pas cette
+autorisation : une signature sur appareil exige un profil qui inclut ce droit.
+La variante Mac Catalyst et l'app Apple Watch conservent leurs entitlements
+propres sans CarPlay.
+
+Le mode d'arrière-plan `bluetooth-central` permet à iOS de délivrer les événements
+Bluetooth lorsque l'iPhone est verrouillé. Il ne garantit pas une exécution
+permanente des timers si iOS suspend l'app ; les mesures anciennes restent
+détectées à la reprise de la scène CarPlay.
+
+Pour essayer l'interface, compilez la cible iOS Simulator, ouvrez le simulateur
+iPhone puis **I/O → External Displays → CarPlay**, ou utilisez le simulateur
+CarPlay fourni dans les outils complémentaires d'Xcode. Vérifiez avec le BMS de
+démonstration la sélection, les mises à jour et les changements de sélection
+depuis l'iPhone ; vérifiez aussi un lancement directement depuis CarPlay sans
+avoir ouvert l'app iPhone. Sur un véhicule réel et avec un profil autorisé,
+testez un BMS JBD/JK, le verrouillage de l'iPhone, la perte de Bluetooth, la
+reconnexion et le débranchement de CarPlay. Une compilation sans signature et
+les tests unitaires ne valident pas l'autorisation Apple ni le fonctionnement
+Bluetooth sur véhicule.
 
 ## Synchronisation iCloud
 

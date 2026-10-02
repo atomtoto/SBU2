@@ -8,13 +8,15 @@ import UIKit
 
 @main
 struct SBU2App: App {
-    /// Only there to answer the iPhone orientation question.
+    /// Handles launch services and iPhone orientation.
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var connection = BMSConnection()
-    @State private var appSettings = AppSettings()
-    @State private var iCloudSync = ICloudSettingsSync.shared
+    @State private var runtime = AppRuntime.shared
+
+    private var connection: BMSConnection { runtime.connection }
+    private var appSettings: AppSettings { runtime.appSettings }
+    private var iCloudSync: ICloudSettingsSync { runtime.iCloudSync }
 
     var body: some Scene {
         WindowGroup {
@@ -22,15 +24,10 @@ struct SBU2App: App {
                 .environment(connection)
                 .environment(appSettings)
                 .environment(iCloudSync)
+                .environment(runtime)
                 .preferredColorScheme(colorScheme)
                 .task {
-                    iCloudSync.start()
-                    appSettings.reload()
-                    connection.reloadSavedSettings()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: ICloudSettingsSync.didChange)) { _ in
-                    appSettings.reload()
-                    connection.reloadSavedSettings()
+                    runtime.start()
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { iCloudSync.synchronize() }
@@ -52,11 +49,7 @@ struct SBU2App: App {
             .environment(appSettings)
             .environment(iCloudSync)
             .preferredColorScheme(colorScheme)
-            .task { iCloudSync.start() }
-            .onReceive(NotificationCenter.default.publisher(for: ICloudSettingsSync.didChange)) { _ in
-                appSettings.reload()
-                connection.reloadSavedSettings()
-            }
+            .task { runtime.start() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { iCloudSync.synchronize() }
             }

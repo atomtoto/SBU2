@@ -357,6 +357,15 @@ final class BMSConnection: NSObject {
     // MARK: - Opening a device
 
     func open(_ device: DiscoveredBMS) {
+        // Either display can choose another pack while the first is still open.
+        // Retire its timers, readings and callbacks before changing adapters.
+        stopPolling()
+        resetReadings()
+        if let previous = peripheral {
+            previous.delegate = nil
+            central.cancelPeripheralConnection(previous)
+        }
+        peripheral = nil
         #if os(iOS) && !targetEnvironment(macCatalyst)
         Task { await chargeLiveActivity.endImmediately() }
         #endif
@@ -419,11 +428,12 @@ final class BMSConnection: NSObject {
         // never outlives the session it was cleared for.
         persistsSettings = true
         if let peripheral {
+            peripheral.delegate = nil
             central.cancelPeripheralConnection(peripheral)
-        } else {
-            startScanning()
         }
+        peripheral = nil
         resetReadings()
+        startScanning()
     }
 
     func displayName(for device: DiscoveredBMS) -> String {
@@ -959,6 +969,7 @@ extension BMSConnection: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard peripheral === self.peripheral, wantsConnection else { return }
         adapter.reset()
         notifying = false
         // Every service rather than only the one expected: it costs one round trip,
@@ -971,6 +982,7 @@ extension BMSConnection: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didFailToConnect peripheral: CBPeripheral,
                         error: Error?) {
+        guard peripheral === self.peripheral else { return }
         wantsConnection = false
         self.peripheral = nil
         lastError = error?.localizedDescription ?? "Could not connect."
@@ -980,6 +992,7 @@ extension BMSConnection: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
+        guard peripheral === self.peripheral else { return }
         stopPolling()
         resetReadings()
         guard wantsConnection else {
@@ -999,6 +1012,7 @@ extension BMSConnection: CBCentralManagerDelegate {
 extension BMSConnection: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard peripheral === self.peripheral else { return }
         let profile = descriptor.profile
         guard let service = peripheral.services?.first(where: { $0.uuid == profile.service }) else {
             let found = (peripheral.services ?? []).map(\.uuid.uuidString)
@@ -1014,6 +1028,7 @@ extension BMSConnection: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral,
                     didDiscoverCharacteristicsFor service: CBService,
                     error: Error?) {
+        guard peripheral === self.peripheral else { return }
         let profile = descriptor.profile
         let characteristics = service.characteristics ?? []
 
@@ -1059,6 +1074,7 @@ extension BMSConnection: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateNotificationStateFor characteristic: CBCharacteristic,
                     error: Error?) {
+        guard peripheral === self.peripheral else { return }
         guard subscribable.contains(where: { $0 === characteristic }) else { return }
         subscriptionsPending = max(0, subscriptionsPending - 1)
         if let error { subscriptionError = error.localizedDescription }
@@ -1078,6 +1094,7 @@ extension BMSConnection: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateValueFor characteristic: CBCharacteristic,
                     error: Error?) {
+        guard peripheral === self.peripheral else { return }
         guard error == nil, let data = characteristic.value, !data.isEmpty else { return }
         lastNotificationAt = .now
         for event in adapter.ingest(data) {
@@ -1088,6 +1105,7 @@ extension BMSConnection: CBPeripheralDelegate {
     /// CoreBluetooth's send queue has room again — a command held back by
     /// `canSendWriteWithoutResponse` can go out now instead of waiting for the tick.
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        guard peripheral === self.peripheral else { return }
         pumpOutbox()
     }
 }
